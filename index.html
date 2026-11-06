@@ -333,23 +333,6 @@ const FNS = {
       return { v: ((1 + v.n / 100) / (1 + v.i / 100) - 1) * 100, kind: 'rate', msg: 'Taxa real.' };
     }
   },
-  du: {
-    id: 'du', title: 'Datas › Dias úteis', fields: [
-      F('a', 'Início', 'Digite a data só com números: 01012026.', { date: true }),
-      F('b', 'Fim', 'Digite a data final: 31122026.', { date: true })
-    ],
-    calc: v => ({ v: bizDays(v.a, v.b), kind: 'du', msg: fmt(v.b - v.a, 0) + ' dias corridos. Feriados nacionais ANBIMA.' })
-  },
-  somadu: {
-    id: 'somadu', title: 'Datas › Data + du', fields: [
-      F('a', 'Data', 'Digite a data só com números: 01012026.', { date: true }),
-      F('d', 'Dias úteis', 'Dias úteis a somar.')
-    ],
-    calc: v => {
-      if (!Number.isInteger(v.d)) throw new Error('Digite os dias sem decimais.');
-      return { v: addBiz(v.a, v.d), kind: 'date', msg: 'Nova data, pulando fins de semana e feriados nacionais.' };
-    }
-  },
   dias: {
     id: 'dias', title: 'Datas › Dias entre', fields: [
       F('a', 'Início', 'Digite a data só com números: 01012026.', { date: true }),
