@@ -725,6 +725,11 @@ render();
 </script>
 <script>
 if ('serviceWorker' in navigator) {
+  const hadWorker = !!navigator.serviceWorker.controller;
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadWorker && !reloaded) { reloaded = true; location.reload(); }
+  });
   window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
 }
 </script>
