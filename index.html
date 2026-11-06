@@ -326,13 +326,23 @@ const FNS = {
     calc: v => ({ v: equivRate(v.r, v.d, 252), kind: 'rate', msg: 'Taxa no período.' })
   },
   real: {
-    id: 'real', title: 'Taxas › Real',
-    fields: [F('n', 'Taxa', 'Digite a taxa nominal.', RATE), F('i', 'Inflação', 'Digite a inflação do período.', RATE)],
+    id: 'real', title: 'Taxas › Spread',
+    fields: [
+      F('i', 'Índice', 'CDI ou IPCA, em %. Para calcular este bloco, aperte ENTER vazio.', { unit: '%', opt: true }),
+      F('s', 'Spread', 'Spread sobre o índice, em %. Para calcular este bloco, aperte ENTER vazio.', { unit: '%', opt: true }),
+      F('t', 'Total', 'Taxa total, em %. Para calcular este bloco, aperte ENTER vazio.', { unit: '%', opt: true })
+    ],
     calc: v => {
-      if (v.i <= -100) throw new Error('Use uma inflação maior que −100%.');
-      return { v: ((1 + v.n / 100) / (1 + v.i / 100) - 1) * 100, kind: 'rate', msg: 'Taxa real.' };
+      const empty = ['i', 's', 't'].filter(k => v[k] === null);
+      if (empty.length !== 1) throw new Error('Preencha dois blocos e deixe vazio o que quer calcular.');
+      const f = k => 1 + v[k] / 100;
+      if (empty[0] === 't') return { v: (f('i') * f('s') - 1) * 100, kind: 'rate', msg: 'Taxa total: índice composto com o spread.', fill: 't' };
+      if ((empty[0] === 's' ? f('i') : f('s')) <= 0) throw new Error('Use taxas maiores que −100%.');
+      if (empty[0] === 's') return { v: (f('t') / f('i') - 1) * 100, kind: 'rate', msg: 'Spread sobre o índice (taxa real, no caso do IPCA).', fill: 's' };
+      return { v: (f('t') / f('s') - 1) * 100, kind: 'rate', msg: 'Índice implícito na taxa total.', fill: 'i' };
     }
   },
+
   dias: {
     id: 'dias', title: 'Datas › Dias entre', fields: [
       F('a', 'Início', 'Digite a data só com números: 01012026.', { date: true }),
@@ -479,6 +489,7 @@ function tryCompute() {
   if (fn.flow) return computeFlow();
   fields.forEach(f => { if (vals[f.k] === undefined) vals[f.k] = null; });
   const r = fn.calc(vals);
+  if (r.fill) vals[r.fill] = r.v;
   if (!isFinite(r.v)) throw new Error('Resultado fora do limite da calculadora.');
   finish(r);
 }
@@ -621,7 +632,7 @@ function selectCat(c) {
 }
 const CATS = {
   juros: { l: 'Juros', hint: 'Selecione o que quer calcular: n, i, PV, PMT ou FV.', subs: [['n', 'n'], ['i', 'i'], ['PV', 'PV'], ['PMT', 'PMT'], ['FV', 'FV']].map(([id, l]) => ({ id: 'j' + id, l })) },
-  taxas: { l: 'Taxas', hint: 'Selecione a conversão nas teclas verdes.', subs: [{ id: 'equiv', l: 'Equiv.' }, { id: 'aam', l: 'a.a.→ a.m.' }, { id: 'maa', l: 'a.m.→ a.a.' }, { id: 'real', l: 'Real' }] },
+  taxas: { l: 'Taxas', hint: 'Selecione a conversão nas teclas verdes.', subs: [{ id: 'equiv', l: 'Equiv.' }, { id: 'aam', l: 'a.a.→ a.m.' }, { id: 'maa', l: 'a.m.→ a.a.' }, { id: 'real', l: 'Spread' }] },
   fluxo: { l: 'Fluxo', hint: 'Selecione VPL ou TIR.', subs: [{ id: 'fvpl', l: 'VPL', a: () => startFlow('vpl') }, { id: 'ftir', l: 'TIR', a: () => startFlow('tir') }, { id: 'fnovo', l: 'Novo fluxo', a: () => {
     flow = { i: null, cfs: [] };
     if (fn) { vals = {}; startFlow(fn.flow); } else say('Selecione VPL ou TIR.', true);
