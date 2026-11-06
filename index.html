@@ -14,7 +14,7 @@
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <style>
-:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); background: #1F2426; }
+:root { background: #1F2426; }
 body { margin: 0; }
 [hidden] { display: none !important; }
 </style>
@@ -37,7 +37,8 @@ button:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
 #app {
   height: 100%; max-width: 440px; max-height: 920px; margin-inline: auto;
   display: flex; flex-direction: column; gap: 10px;
-  padding-block: 10px;
+  padding-top: calc(10px + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
   user-select: none; -webkit-user-select: none;
