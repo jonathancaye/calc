@@ -277,7 +277,7 @@ function decFor(kind) {
 }
 function resultText(r) {
   if (r.kind === 'date') return weekday(r.v) + ' ' + dateShort(r.v);
-  return r.kind === 'du' ? fmt(r.v, 0) + ' du' : fmt(r.v, decFor(r.kind)) + (r.kind === 'rate' ? '%' : r.kind === 'int' ? ' dias' : '');
+  return r.kind === 'both' ? fmt(r.v, 0) + ' dc · ' + fmt(r.du, 0) + ' du' : r.kind === 'du' ? fmt(r.v, 0) + ' du' : fmt(r.v, decFor(r.kind)) + (r.kind === 'rate' ? '%' : r.kind === 'int' ? ' dias' : '');
 }
 
 /* ---------- Funções com blocos ---------- */
@@ -348,11 +348,11 @@ const FNS = {
     }
   },
   dias: {
-    id: 'dias', title: 'Datas › Dias corridos', fields: [
+    id: 'dias', title: 'Datas › Dias entre', fields: [
       F('a', 'Início', 'Digite a data só com números: 01012026.', { date: true }),
       F('b', 'Fim', 'Digite a data final: 31122026.', { date: true })
     ],
-    calc: v => ({ v: v.b - v.a, kind: 'int', msg: fmt(bizDays(v.a, v.b), 0) + ' dias úteis. Feriados nacionais ANBIMA.' })
+    calc: v => ({ v: v.b - v.a, du: bizDays(v.a, v.b), kind: 'both', msg: 'Dias corridos e dias úteis (feriados nacionais ANBIMA).', long: true })
   },
   soma: {
     id: 'soma', title: 'Datas › Data + dias', fields: [
@@ -361,7 +361,7 @@ const FNS = {
     ],
     calc: v => {
       if (!Number.isInteger(v.d)) throw new Error('Digite os dias sem decimais.');
-      return { v: v.a + v.d, kind: 'date', msg: 'Nova data.' };
+      return { v: v.a + v.d, kind: 'date', msg: 'Corridos. Em ' + fmt(v.d, 0) + ' dias úteis: ' + weekday(addBiz(v.a, v.d)) + ' ' + dateShort(addBiz(v.a, v.d)) + '.', long: true };
     }
   },
   price: {
@@ -639,7 +639,7 @@ const CATS = {
     flow = { i: null, cfs: [] };
     if (fn) { vals = {}; startFlow(fn.flow); } else say('Selecione VPL ou TIR.', true);
   } }] },
-  datas: { l: 'Datas', hint: 'Selecione o cálculo de datas nas teclas verdes.', subs: [{ id: 'dias', l: 'Dias corridos' }, { id: 'du', l: 'Dias úteis' }, { id: 'soma', l: 'Data + dias' }, { id: 'somadu', l: 'Data + du' }, { id: 'hoje', l: 'Hoje', a: () => {
+  datas: { l: 'Datas', hint: 'Selecione o cálculo de datas nas teclas verdes.', subs: [{ id: 'dias', l: 'Dias entre' }, { id: 'soma', l: 'Data + dias' }, { id: 'hoje', l: 'Hoje', a: () => {
     if (!fn || active < 0 || !fields[active].date) throw new Error('Escolha um cálculo de datas e use Hoje num bloco de data.');
     const n = new Date();
     entry = p2(n.getDate()) + p2(n.getMonth() + 1) + n.getFullYear();
