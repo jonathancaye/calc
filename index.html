@@ -62,6 +62,8 @@ button:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
 .b.on .bl { color: var(--lcd-pill); }
 #x { font-family: var(--num); font-size: 38px; line-height: 1.12; font-weight: 500; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; margin-top: auto; user-select: text; -webkit-user-select: text; }
 #app.free #x { font-size: 46px; }
+#x .ln { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 30px; line-height: 1.2; }
+#x .ln small { font: 600 14px var(--sans); color: var(--lcd-muted); letter-spacing: .04em; }
 #msg { font-size: 13px; line-height: 1.25; min-height: 2.5em; margin: 0; color: var(--lcd-ink); }
 #msg.err { color: var(--lcd-err); font-weight: 600; }
 
@@ -352,7 +354,7 @@ const FNS = {
       F('a', 'Início', 'Digite a data só com números: 01012026.', { date: true }),
       F('b', 'Fim', 'Digite a data final: 31122026.', { date: true })
     ],
-    calc: v => ({ v: v.b - v.a, du: bizDays(v.a, v.b), kind: 'both', msg: 'Dias corridos e dias úteis (feriados nacionais ANBIMA).', long: true })
+    calc: v => ({ v: v.b - v.a, kind: 'int', lines: [['Corridos', fmt(v.b - v.a, 0) + ' dias'], ['Úteis', fmt(bizDays(v.a, v.b), 0) + ' dias']], msg: 'Dias úteis com feriados nacionais ANBIMA.', long: true })
   },
   soma: {
     id: 'soma', title: 'Datas › Data + dias', fields: [
@@ -361,7 +363,8 @@ const FNS = {
     ],
     calc: v => {
       if (!Number.isInteger(v.d)) throw new Error('Digite os dias sem decimais.');
-      return { v: v.a + v.d, kind: 'date', msg: 'Corridos. Em ' + fmt(v.d, 0) + ' dias úteis: ' + weekday(addBiz(v.a, v.d)) + ' ' + dateShort(addBiz(v.a, v.d)) + '.', long: true };
+      const u = addBiz(v.a, v.d);
+      return { v: v.a + v.d, kind: 'date', lines: [['Corridos', weekday(v.a + v.d) + ' ' + dateShort(v.a + v.d)], ['Úteis', weekday(u) + ' ' + dateShort(u)]], msg: 'Dias úteis com feriados nacionais ANBIMA.', long: true };
     }
   },
   price: {
@@ -721,8 +724,13 @@ function render() {
     text = entry !== null && entry !== '' ? (f && f.date ? maskDate(entry) : entryShown()) : (f && f.date ? '__/__/____' : '0');
   } else text = entry !== null ? entryShown() || '0' : fmt(X(), decFor('money'));
   const xEl = $('x');
+  if (done && done.lines) {
+    xEl.innerHTML = done.lines.map(l => '<div class="ln"><small>' + l[0] + '</small><span>' + l[1] + '</span></div>').join('');
+    xEl.style.fontSize = '';
+  } else {
   xEl.textContent = text;
   xEl.style.fontSize = text.length > 19 ? '20px' : text.length > 15 ? '25px' : text.length > 12 ? '30px' : '';
+  }
   const m = $('msg'); m.textContent = msgText; m.className = msgErr ? 'err' : '';
   $('btnEnd').setAttribute('aria-pressed', String(!begin));
   $('btnBeg').setAttribute('aria-pressed', String(begin));
