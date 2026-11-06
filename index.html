@@ -62,6 +62,7 @@ button:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
 .b.on .bl { color: var(--lcd-pill); }
 #x { font-family: var(--num); font-size: 38px; line-height: 1.12; font-weight: 500; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; margin-top: auto; user-select: text; -webkit-user-select: text; }
 #app.free #x { font-size: 46px; }
+#sub .k.off { opacity: .35; cursor: default; }
 #x .ln { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 30px; line-height: 1.2; }
 #x .ln small { font: 600 14px var(--sans); color: var(--lcd-muted); letter-spacing: .04em; }
 #msg { font-size: 13px; line-height: 1.25; min-height: 2.5em; margin: 0; color: var(--lcd-ink); }
@@ -738,6 +739,8 @@ function render() {
   ['auto', 2, 4, 6].forEach(d => $('dec' + d).setAttribute('aria-pressed', String(dec === d)));
   Object.keys(CATS).forEach(c => $('c-' + c).classList.toggle('sel', c === cat));
   document.querySelectorAll('#sub .k').forEach(b => b.classList.toggle('sel', !!fn && (fn.id === b.dataset.s)));
+  const hojeKey = document.querySelector('#sub [data-s="hoje"]');
+  if (hojeKey) hojeKey.classList.toggle('off', !(fn && !done && active >= 0 && fields[active] && fields[active].date));
 }
 const locked = () => !!cat && !fn;
 function warnLocked() {
@@ -759,6 +762,7 @@ document.addEventListener('click', e => {
   const c = e.target.closest('[data-c]'), s = e.target.closest('[data-s]'), k = e.target.closest('[data-k]'), b = e.target.closest('[data-b]');
   if (c) return run(() => selectCat(c.dataset.c));
   if (s) {
+    if (s.classList.contains('off')) return;
     const list = cat ? CATS[cat].subs : MATH, def = list.find(x => x.id === s.dataset.s);
     return run(() => { if (def.a) def.a(); else openFn(def.id); });
   }
