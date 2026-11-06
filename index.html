@@ -1,0 +1,729 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Calc</title>
+<meta name="description" content="Calculadora financeira RPN para celular.">
+<meta name="theme-color" content="#1F2426">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Calc">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<style>
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); background: #1F2426; }
+body { margin: 0; }
+[hidden] { display: none !important; }
+</style>
+<style>
+/* Layout: uma calculadora só. O visor mostra blocos a preencher; todo valor entra pelo teclado e o ENTER avança de bloco. */
+:root {
+  --body: #1F2426; --key: #454D50; --key-dark: #2E3437; --key-edge: #0F1213;
+  --ink: #F3F6F5; --teal: #0F8A7E; --teal-ink: #FFFFFF; --orange: #EE7A24; --orange-ink: #231003;
+  --lcd: #C9D6C5; --lcd-ink: #17231F; --lcd-muted: #4A5B52; --lcd-pill: #B2C2AE; --lcd-err: #B00012;
+  --num: ui-monospace, "SF Mono", SFMono-Regular, Menlo, "Roboto Mono", Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; }
+body { background: var(--body); color: var(--ink); font-family: var(--sans); overscroll-behavior: none; }
+button { font: inherit; color: inherit; border: 0; background: none; padding: 0; cursor: pointer; touch-action: manipulation; }
+button:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
+
+#app {
+  height: 100%; max-width: 440px; max-height: 920px; margin-inline: auto;
+  display: flex; flex-direction: column; gap: 10px;
+  padding-block: 10px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  user-select: none; -webkit-user-select: none;
+}
+
+/* Visor */
+#lcd { background: var(--lcd); color: var(--lcd-ink); border-radius: 8px; padding: 8px 10px 8px; flex: none; min-height: 232px; display: flex; flex-direction: column; gap: 4px; box-shadow: inset 0 0 0 3px var(--key-edge); }
+.lcd-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pill { display: inline-flex; background: var(--lcd-pill); border-radius: 999px; padding: 2px; }
+.pill button { min-width: 30px; min-height: 26px; padding-inline: 7px; border-radius: 999px; font-size: 12px; font-weight: 700; color: var(--lcd-muted); }
+.pill button[aria-pressed="true"] { background: var(--lcd-ink); color: var(--lcd); }
+.pill-group { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--lcd-muted); }
+#line { display: flex; justify-content: space-between; gap: 10px; min-height: 18px; font-size: 13px; color: var(--lcd-muted); }
+#title { font-weight: 700; color: var(--lcd-ink); white-space: nowrap; }
+#y { font-family: var(--num); white-space: nowrap; overflow: hidden; }
+#blocks { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+.b { min-width: 0; min-height: 42px; border-radius: 6px; border: 1.5px solid var(--lcd-muted); padding: 3px 6px; display: flex; flex-direction: column; justify-content: center; text-align: left; gap: 1px; color: var(--lcd-ink); }
+.b .bl { font-size: 11px; line-height: 1.1; color: var(--lcd-muted); white-space: nowrap; overflow: hidden; }
+.b .bv { font-family: var(--num); font-size: 14px; line-height: 1.15; min-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.b.on { background: var(--lcd-ink); border-color: var(--lcd-ink); color: var(--lcd); }
+.b.on .bl { color: var(--lcd-pill); }
+#x { font-family: var(--num); font-size: 38px; line-height: 1.12; font-weight: 500; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; margin-top: auto; user-select: text; -webkit-user-select: text; }
+#app.free #x { font-size: 46px; }
+#msg { font-size: 13px; line-height: 1.25; min-height: 2.5em; margin: 0; color: var(--lcd-ink); }
+#msg.err { color: var(--lcd-err); font-weight: 600; }
+
+/* Teclas */
+#pad { flex: 1 1 0; min-height: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); grid-template-rows: minmax(112px, 2.4fr) repeat(4, minmax(38px, 1fr)); gap: 7px; }
+#funcs { grid-column: 1 / -1; position: relative; min-height: 0; margin: 6px -4px 0; padding: 14px 8px 10px; border: 1.5px solid var(--orange); border-radius: 10px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 7px; }
+#sec { position: absolute; top: -8px; left: 12px; padding-inline: 6px; background: var(--body); font-size: 11px; line-height: 14px; font-weight: 700; letter-spacing: .14em; color: var(--orange); }
+#sub { grid-column: 1 / -1; display: flex; gap: 7px; min-width: 0; }
+#sub .k { flex: 1 1 0; }
+.k { min-width: 0; border-radius: 8px; background: var(--key); box-shadow: 0 3px 0 var(--key-edge); display: flex; align-items: center; justify-content: center; padding: 2px; line-height: 1.1; font-weight: 600; font-size: 15px; text-align: center; transition: transform .05s; }
+.k:active { transform: translateY(3px); box-shadow: none; }
+.k.d { font-family: var(--num); font-size: 26px; font-weight: 500; }
+.k.op { background: var(--key-dark); font-size: 24px; }
+.k.fn { background: var(--key-dark); }
+.k.cat { background: var(--key-dark); font-size: 13.5px; }
+.k.cat.sel { background: var(--teal); color: var(--teal-ink); }
+.k.subk { background: var(--teal); color: var(--teal-ink); font-size: 14px; }
+.k.subk.sel { background: var(--orange); color: var(--orange-ink); }
+.k.mathk { background: var(--key-dark); font-size: 15px; }
+.k.mathk.sel { background: var(--orange); color: var(--orange-ink); }
+.k.clear { background: var(--key-dark); color: var(--orange); font-size: 13px; box-shadow: 0 3px 0 var(--key-edge), inset 0 0 0 1px var(--orange); }
+.k.enter { background: var(--orange); color: var(--orange-ink); font-size: 14px; letter-spacing: .06em; font-weight: 700; grid-row: span 2; }
+#app.blocking .k.op:not(.live) { opacity: .35; }
+#app.locked #pad > .k:not(.cat):not(.clear) { opacity: .35; }
+
+@media (max-height: 640px) {
+  #lcd { min-height: 204px; } #x { font-size: 28px; } #app.free #x { font-size: 34px; } #msg { font-size: 12px; } .k.d { font-size: 20px; } .k.op { font-size: 19px; }
+  .b { min-height: 36px; }
+}
+@media (prefers-reduced-motion: reduce) { .k { transition: none; } }
+</style>
+</head>
+<body>
+
+<div id="app" class="free">
+  <section id="lcd" aria-label="Visor">
+    <div class="lcd-top">
+      <div class="pill" role="group" aria-label="Momento da parcela">
+        <button type="button" id="btnEnd" aria-pressed="true">END</button>
+        <button type="button" id="btnBeg" aria-pressed="false">BEG</button>
+      </div>
+      <div class="pill" role="group" aria-label="Período fracionário">
+        <button type="button" id="btnC" aria-pressed="false" title="Juros compostos no período fracionário">C</button>
+      </div>
+      <div class="pill-group">casas
+        <div class="pill" role="group" aria-label="Casas decimais">
+          <button type="button" id="decauto" aria-pressed="true">Auto</button>
+          <button type="button" id="dec2" aria-pressed="false">2</button>
+          <button type="button" id="dec4" aria-pressed="false">4</button>
+          <button type="button" id="dec6" aria-pressed="false">6</button>
+        </div>
+      </div>
+    </div>
+    <div id="line"><span id="title"></span><span id="y"></span></div>
+    <div id="blocks"></div>
+    <div id="x" aria-live="polite">0,00</div>
+    <p id="msg" aria-live="polite"></p>
+  </section>
+  <section id="pad" aria-label="Teclado"></section>
+</div>
+
+<script>
+document.documentElement.lang = 'pt-BR';
+const $ = id => document.getElementById(id);
+
+/* ---------- Matemática financeira ---------- */
+function factors(i, n, begin) {
+  const r = i / 100;
+  if (r === 0) return { v: 1, ann: n };
+  const v = Math.pow(1 + r, -n);
+  return { v, ann: (1 + (begin ? r : 0)) * (1 - v) / r };
+}
+function solveRate(f) {
+  const test = (a, b) => {
+    let fa = f(a), fb = f(b);
+    if (!isFinite(fa) || !isFinite(fb)) return null;
+    if (fa === 0) return a;
+    if (fb === 0) return b;
+    if (fa * fb > 0) return null;
+    for (let j = 0; j < 300 && Math.abs(b - a) > 1e-14; j++) {
+      const m = (a + b) / 2, fm = f(m);
+      if (fa * fm <= 0) { b = m; fb = fm; } else { a = m; fa = fm; }
+    }
+    return (a + b) / 2;
+  };
+  let up = 0, down = 0;
+  for (let k = 0; k < 75; k++) {
+    const s = 1e-4 * Math.pow(1.25, k);
+    let res = test(up, s); up = s;
+    if (res !== null) return res;
+    if (down > -0.9999) {
+      const q = Math.max(-s, -0.9999);
+      res = test(q, down); down = q;
+      if (res !== null) return res;
+    }
+  }
+  return null;
+}
+const SIGN = 'Sem solução. Use +/− no valor que sai, para PV e FV ficarem com sinais opostos.';
+/* Mesma regra da HP: período fracionário em PV usa juros simples, ou compostos com C ligado. */
+function tvmParts(i, n, begin, compound) {
+  const r = i / 100, whole = Math.floor(n), f = n - whole;
+  const pvF = f === 0 ? 1 : compound ? Math.pow(1 + r, f) : 1 + r * f;
+  const v = Math.pow(1 + r, -whole);
+  const ann = r === 0 ? whole : (1 + (begin ? r : 0)) * (1 - v) / r;
+  return { pvF, v, ann };
+}
+function tvmSolve(key, R, begin, compound) {
+  const { n, i, PV, PMT, FV } = R;
+  if (key === 'n') {
+    let exact;
+    if (i === 0) {
+      if (PMT === 0) throw new Error('Sem solução com i zero e PMT zero.');
+      exact = -(PV + FV) / PMT;
+      if (exact <= 0) throw new Error(SIGN);
+    } else {
+      const r = i / 100, A = PMT * (1 + (begin ? r : 0)) / r, v = (PV + A) / (A - FV);
+      if (!(v > 0) || !isFinite(v)) throw new Error(SIGN);
+      exact = -Math.log(v) / Math.log(1 + r);
+    }
+    return { v: exact - Math.floor(exact) < 0.005 ? Math.floor(exact) : Math.ceil(exact), exact };
+  }
+  if (key === 'i') {
+    const bal = x => { const t = tvmParts(x * 100, n, begin, compound); return PV * t.pvF + PMT * t.ann + FV * t.v; };
+    const r = solveRate(bal);
+    if (r === null) throw new Error(SIGN);
+    return { v: r * 100 };
+  }
+  if (i <= -100) throw new Error('Use i maior que −100%.');
+  const { pvF, v, ann } = tvmParts(i, n, begin, compound);
+  if (key === 'PV') return { v: -(PMT * ann + FV * v) / pvF };
+  if (key === 'FV') return { v: -(PV * pvF + PMT * ann) / v };
+  if (ann === 0) throw new Error('Para PMT, n precisa ser 1 ou maior.');
+  return { v: -(PV * pvF + FV * v) / ann };
+}
+function equivRate(rate, q, t) {
+  if (t === 0) throw new Error('O período não pode ser zero.');
+  if (rate <= -100) throw new Error('Use uma taxa maior que −100%.');
+  return (Math.pow(1 + rate / 100, q / t) - 1) * 100;
+}
+const npv = (s, r) => s.reduce((acc, c, t) => acc + c * Math.pow(1 + r, -t), 0);
+const WEEK = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+const p2 = v => String(v).padStart(2, '0');
+const dateShort = d => { const c = new Date(d * 864e5); return p2(c.getUTCDate()) + '/' + p2(c.getUTCMonth() + 1) + '/' + c.getUTCFullYear(); };
+const weekday = d => WEEK[new Date(d * 864e5).getUTCDay()];
+function parseDateDigits(s) {
+  if (s.length !== 8) throw new Error('Digite 8 números: dia, mês e ano. Ex.: 01012026.');
+  const d = +s.slice(0, 2), m = +s.slice(2, 4), y = +s.slice(4);
+  const t = Date.UTC(y, m - 1, d), c = new Date(t);
+  if (c.getUTCDate() !== d || c.getUTCMonth() !== m - 1) throw new Error('Data inválida. Confira dia e mês.');
+  return Math.round(t / 864e5);
+}
+
+/* ---------- Formatação ---------- */
+function fmt(v, min, max) {
+  if (!isFinite(v)) return 'Erro';
+  const a = Math.abs(v);
+  if (a >= 1e13) return v.toExponential(5).replace('.', ',').replace('-', '−');
+  const s = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: min, maximumFractionDigits: max === undefined ? min : max }).format(v);
+  return /[1-9]/.test(s) ? s.replace('-', '−') : s.replace('-', '');
+}
+const money = v => fmt(v, 2);
+
+/* ---------- Estado: sempre abre zerada ---------- */
+let stack = [0, 0, 0, 0], entry = null, lift = true, begin = false, compound = false, dec = 'auto';
+let cat = null;          // categoria aberta (fileira de baixo)
+let fn = null;           // função com blocos
+let fields = [], vals = {}, active = -1, done = null, repMode = false;
+let juros = {};          // valores que passam de uma tecla de Juros para outra
+let flow = { i: null, cfs: [] };
+const HOME = 'Escolha uma função ou faça uma conta.';
+let msgText = HOME, msgErr = false;
+const say = (t, err) => { msgText = t; msgErr = !!err; };
+
+function decFor(kind) {
+  if (dec !== 'auto') return dec;
+  return kind === 'rate' ? 4 : kind === 'int' ? 0 : 2;
+}
+function resultText(r) {
+  if (r.kind === 'date') return weekday(r.v) + ' ' + dateShort(r.v);
+  return fmt(r.v, decFor(r.kind)) + (r.kind === 'rate' ? '%' : r.kind === 'int' ? ' dias' : '');
+}
+
+/* ---------- Funções com blocos ---------- */
+const F = (k, l, hint, extra) => Object.assign({ k, l, hint }, extra);
+const RATE = { unit: '%' };
+function jurosFn(t) {
+  const FK = { n: 'Número de períodos.', i: 'Taxa por período, em %.', PV: 'Valor presente. Use +/− se o dinheiro sai.', PMT: 'Parcela. Se não houver, aperte ENTER.', FV: 'Valor futuro. Se não houver, aperte ENTER.' };
+  return {
+    id: 'j' + t, title: 'Juros › ' + t, carry: true,
+    fields: ['n', 'i', 'PV', 'PMT', 'FV'].filter(k => k !== t).map(k => F(k, k, k === 'PV' && (t === 'FV' || t === 'PMT') ? FK.PV.replace('.', ' .').replace(' .', '.') : FK[k], { opt: ['PV', 'PMT', 'FV'].includes(k), unit: k === 'i' ? '%' : '' })),
+    calc: v => {
+      const money3 = ['PV', 'PMT', 'FV'].filter(k => k !== t);
+      const filled = money3.filter(k => v[k] !== null && v[k] !== undefined).length;
+      const need = t === 'n' || t === 'i' ? 2 : 1;
+      if (filled < need) throw new Error('Preencha ' + (need === 2 ? 'dois de ' : 'um de ') + money3.join(', ') + '.');
+      const R = {}; ['n', 'i', 'PV', 'PMT', 'FV'].forEach(k => { R[k] = v[k] || 0; });
+      const r = tvmSolve(t, R, begin, compound);
+      juros = Object.assign({}, v, { [t]: r.v });
+      return { v: r.v, kind: t === 'i' ? 'rate' : 'money', msg: t === 'n' && r.exact !== r.v ? 'n arredondado como na HP. Exato: ' + fmt(r.exact, 4) + '.' : t + ' calculado.' };
+    }
+  };
+}
+const conv = (id, title, q, t, l) => ({
+  id, title: 'Taxas › ' + title,
+  fields: [F('r', l, 'Digite a taxa e aperte ENTER.', RATE)],
+  calc: v => ({ v: equivRate(v.r, q, t), kind: 'rate', msg: 'Taxa convertida.' })
+});
+const FNS = {
+  equiv: {
+    id: 'equiv', title: 'Taxas › Equiv.',
+    fields: [
+      F('t', 'Taxa', 'Digite a taxa que você tem.', RATE),
+      F('p', 'Período', 'Período dessa taxa. Ex.: 1 para mês, 12 para ano.'),
+      F('e', 'Equiv.', 'Período que você quer, na mesma unidade.')
+    ],
+    calc: v => ({ v: equivRate(v.t, v.e, v.p), kind: 'rate', msg: 'Taxa equivalente.' })
+  },
+  aam: conv('aam', 'a.a.→a.m.', 1, 12, 'Taxa a.a.'),
+  maa: conv('maa', 'a.m.→a.a.', 12, 1, 'Taxa a.m.'),
+  du: {
+    id: 'du', title: 'Taxas › a.a.→du',
+    fields: [F('r', 'Taxa a.a.', 'Digite a taxa ao ano.', RATE), F('d', 'Dias úteis', 'Prazo em dias úteis, base 252.')],
+    calc: v => ({ v: equivRate(v.r, v.d, 252), kind: 'rate', msg: 'Taxa no período.' })
+  },
+  real: {
+    id: 'real', title: 'Taxas › Real',
+    fields: [F('n', 'Taxa', 'Digite a taxa nominal.', RATE), F('i', 'Inflação', 'Digite a inflação do período.', RATE)],
+    calc: v => {
+      if (v.i <= -100) throw new Error('Use uma inflação maior que −100%.');
+      return { v: ((1 + v.n / 100) / (1 + v.i / 100) - 1) * 100, kind: 'rate', msg: 'Taxa real.' };
+    }
+  },
+  dias: {
+    id: 'dias', title: 'Datas › Dias entre', fields: [
+      F('a', 'Início', 'Digite a data só com números: 01012026.', { date: true }),
+      F('b', 'Fim', 'Digite a data final: 31122026.', { date: true })
+    ],
+    calc: v => ({ v: v.b - v.a, kind: 'int', msg: 'Dias corridos.' })
+  },
+  soma: {
+    id: 'soma', title: 'Datas › Data + dias', fields: [
+      F('a', 'Data', 'Digite a data só com números: 01012026.', { date: true }),
+      F('d', 'Dias', 'Dias corridos a somar.')
+    ],
+    calc: v => {
+      if (!Number.isInteger(v.d)) throw new Error('Digite os dias sem decimais.');
+      return { v: v.a + v.d, kind: 'date', msg: 'Nova data.' };
+    }
+  },
+  price: {
+    id: 'price', title: 'Parcelas › Valor da parcela', fields: [
+      F('v', 'Valor', 'Valor financiado.'),
+      F('i', 'Taxa', 'Taxa por período.', RATE),
+      F('n', 'Prazo', 'Número de parcelas.')
+    ],
+    calc: v => {
+      if (v.n <= 0) throw new Error('O prazo precisa ser maior que zero.');
+      return { v: v.v / factors(v.i, v.n, begin).ann, kind: 'money', msg: 'Valor da parcela.' };
+    }
+  },
+  amort: {
+    id: 'amort', title: 'Parcelas › Amortização', fields: [
+      F('v', 'Valor', 'Valor financiado.'),
+      F('i', 'Taxa', 'Taxa por período.', RATE),
+      F('n', 'Prazo', 'Número de parcelas.'),
+      F('a', 'Da parcela', 'Primeira parcela do intervalo.'),
+      F('b', 'Até', 'Última parcela do intervalo.')
+    ],
+    calc: v => {
+      if (!Number.isInteger(v.n) || v.n < 1 || v.n > 1e5) throw new Error('O prazo precisa ser inteiro, de 1 a 100.000.');
+      if (!Number.isInteger(v.a) || !Number.isInteger(v.b) || v.a < 1 || v.b < v.a || v.b > v.n) throw new Error('Confira o intervalo: as parcelas vão de 1 a ' + v.n + '.');
+      const pmt = v.v / factors(v.i, v.n, begin).ann;
+      let bal = v.v, tj = 0, tm = 0;
+      for (let j = 1; j <= v.b; j++) {
+        const jr = begin && j === 1 ? 0 : bal * v.i / 100, am = pmt - jr;
+        bal -= am;
+        if (j >= v.a) { tj += jr; tm += am; }
+      }
+      if (Math.abs(bal) < 1e-6) bal = 0;
+      return { v: bal, kind: 'money', msg: 'Saldo no visor. Parcela ' + money(pmt) + ', juros ' + money(tj) + ', amortizado ' + money(tm) + '.', long: true };
+    }
+  },
+  pct: {
+    id: 'pct', title: '%', fields: [F('b', 'Valor', 'Digite o valor.'), F('p', 'Percentual', 'Digite o percentual.', RATE)],
+    calc: v => ({ v: v.b * v.p / 100, kind: 'money', msg: 'Percentual do valor.' })
+  },
+  dpct: {
+    id: 'dpct', title: 'Δ% Variação', fields: [F('a', 'Base', 'Digite o valor inicial.'), F('b', 'Novo', 'Digite o valor novo.')],
+    calc: v => {
+      if (v.a === 0) throw new Error('A base não pode ser zero.');
+      return { v: (v.b - v.a) / v.a * 100, kind: 'rate', msg: 'Variação.' };
+    }
+  },
+  tpct: {
+    id: 'tpct', title: '%T Participação', fields: [F('t', 'Total', 'Digite o total.'), F('p', 'Parte', 'Digite a parte.')],
+    calc: v => {
+      if (v.t === 0) throw new Error('O total não pode ser zero.');
+      return { v: v.p / v.t * 100, kind: 'rate', msg: 'Participação no total.' };
+    }
+  },
+  pow: {
+    id: 'pow', title: 'yˣ Potência', fields: [F('y', 'Base', 'Digite a base.'), F('x', 'Expoente', 'Digite o expoente.')],
+    calc: v => ({ v: Math.pow(v.y, v.x), kind: 'money', msg: 'Potência.' })
+  }
+};
+['n', 'i', 'PV', 'PMT', 'FV'].forEach(t => { FNS['j' + t] = jurosFn(t); });
+
+/* ---------- Fluxo: blocos crescem a cada CF ---------- */
+function startFlow(kind) {
+  fn = { id: 'f' + kind, flow: kind, title: 'Fluxo › ' + kind.toUpperCase() };
+  buildFlow(); done = null; repMode = false; entry = null;
+  active = kind === 'vpl' && flow.i === null ? 0 : fields.length - 1;
+  if (flow.cfs.length >= 2 && (kind === 'tir' || flow.i !== null)) computeFlow();
+  else hint();
+}
+function buildFlow() {
+  fields = fn.flow === 'vpl' ? [F('i', 'i', 'Taxa por período.', RATE)] : [];
+  if (fn.flow === 'vpl') vals.i = flow.i;
+  flow.cfs.forEach((c, j) => { fields.push(F('c' + j, 'CF' + j, '', { cf: j })); vals['c' + j] = c.v; });
+  const j = flow.cfs.length;
+  fields.push(F('c' + j, 'CF' + j, '', { cf: j, last: true })); vals['c' + j] = null;
+}
+function flowHint() {
+  const j = fields[active].cf;
+  if (j === 0) return 'CF0: valor de hoje. Use +/− se o dinheiro sai.';
+  if (repMode) return 'Quantas vezes esse valor se repete? Digite e aperte ENTER.';
+  return 'CF' + j + ': digite o valor. Para repetir, use ×. ' + (j >= 2 ? 'ENTER vazio calcula.' : '');
+}
+function computeFlow() {
+  if (flow.cfs.length < 2) throw new Error('Lance CF0 e pelo menos um CF.');
+  const s = [];
+  flow.cfs.forEach(c => { for (let k = 0; k < c.n; k++) s.push(c.v); });
+  if (s.length > 1e5) throw new Error('Use até 100.000 períodos.');
+  let r;
+  if (fn.flow === 'vpl') {
+    if (flow.i === null) { active = 0; throw new Error('Preencha i.'); }
+    r = { v: npv(s, flow.i / 100), kind: 'money', msg: 'VPL. Toque em TIR para usar o mesmo fluxo.' };
+  } else {
+    if (!(s.some(v => v < 0) && s.some(v => v > 0))) throw new Error('Sem TIR. O fluxo precisa ter entrada e saída. Use +/− no valor que sai.');
+    const t = solveRate(v => npv(s, v));
+    if (t === null) throw new Error('Sem TIR para esse fluxo.');
+    r = { v: t * 100, kind: 'rate', msg: 'TIR por período. Toque em VPL para usar o mesmo fluxo.' };
+  }
+  finish(r);
+}
+
+/* ---------- Motor dos blocos ---------- */
+function openFn(id) {
+  const f = FNS[id];
+  fn = f; fields = f.fields; vals = {}; done = null; entry = null; repMode = false;
+  fields.forEach(x => { vals[x.k] = f.carry && juros[x.k] !== undefined ? juros[x.k] : null; });
+  active = fields.findIndex(x => vals[x.k] === null && !x.opt);
+  if (active < 0) {
+    try { active = fields.length - 1; tryCompute(); return; }
+    catch (e) { active = Math.max(0, fields.findIndex(x => vals[x.k] === null)); }
+  }
+  hint();
+}
+function hint() {
+  if (fn.flow) return say(flowHint());
+  say(fields[active].hint);
+}
+function restart() {
+  if (fn.flow) { flow = { i: null, cfs: [] }; vals = {}; startFlow(fn.flow); return; }
+  if (fn.carry) juros = {};
+  openFn(fn.id);
+}
+function finish(r) {
+  done = r; active = -1; entry = null;
+  if (lift) shift();
+  stack[0] = r.kind === 'date' ? 0 : r.v; lift = true;
+  say(r.msg + (fn.flow || r.long ? '' : ' Digite para um novo cálculo, ou toque num bloco para corrigir.'));
+}
+function tryCompute() {
+  if (fn.flow) return computeFlow();
+  fields.forEach(f => { if (vals[f.k] === undefined) vals[f.k] = null; });
+  const r = fn.calc(vals);
+  if (!isFinite(r.v)) throw new Error('Resultado fora do limite da calculadora.');
+  finish(r);
+}
+function blockEnter() {
+  const f = fields[active], typed = entry !== null && entry !== '' && entry !== '-';
+  if (fn.flow) return flowEnter(f, typed);
+  if (typed) {
+    vals[f.k] = f.date ? parseDateDigits(entry) : Number(entry.replace(',', '.')) || 0;
+    entry = null;
+  } else if (vals[f.k] === null && !f.opt) {
+    throw new Error('Digite ' + f.l + ' antes do ENTER.');
+  }
+  entry = null;
+  const next = fields.findIndex((x, j) => j > active && vals[x.k] === null);
+  const anyEmpty = next >= 0 ? next : (fields.some(x => vals[x.k] === null && !x.opt) ? fields.findIndex(x => vals[x.k] === null && !x.opt) : -1);
+  if (anyEmpty >= 0) { active = anyEmpty; hint(); }
+  else tryCompute();
+}
+function flowEnter(f, typed) {
+  if (f.k === 'i') {
+    if (!typed && flow.i === null) throw new Error('Digite i antes do ENTER.');
+    if (typed) flow.i = Number(entry.replace(',', '.')) || 0;
+    entry = null; vals.i = flow.i; active = fields.length - 1;
+    if (flow.cfs.length >= 2) return computeFlow();
+    return hint();
+  }
+  const j = f.cf;
+  if (repMode) {
+    const n = typed ? Number(entry.replace(',', '.')) : 0;
+    if (!Number.isInteger(n) || n < 1) throw new Error('Digite as repetições como número inteiro.');
+    flow.cfs[j].n = n; repMode = false; entry = null;
+  } else if (typed) {
+    const v = Number(entry.replace(',', '.')) || 0;
+    if (flow.cfs[j]) flow.cfs[j].v = v; else flow.cfs[j] = { v, n: 1 };
+    entry = null;
+  } else if (j === flow.cfs.length) {
+    if (j >= 2) return computeFlow();
+    throw new Error('Digite CF' + j + ' antes do ENTER.');
+  }
+  buildFlow(); active = fields.length - 1; hint();
+}
+function flowRepeat() {
+  const f = fields[active];
+  if (!f || f.cf === undefined || f.cf === 0) throw new Error('Digite um CF de CF1 em diante para repetir.');
+  if (entry === null || entry === '') throw new Error('Digite o valor do CF e depois aperte ×.');
+  const v = Number(entry.replace(',', '.')) || 0;
+  if (flow.cfs[f.cf]) flow.cfs[f.cf].v = v; else flow.cfs[f.cf] = { v, n: 1 };
+  vals[f.k] = v; entry = null; repMode = true; hint();
+}
+function focusBlock(j) {
+  if (fn.flow && fields[j].cf !== undefined && j !== fields.length - 1 && !done) { entry = null; repMode = false; }
+  done = null; active = j; entry = null; repMode = false; hint();
+}
+
+/* ---------- Pilha (contas livres) ---------- */
+const X = () => stack[0];
+const shift = () => { stack = [stack[0], stack[0], stack[1], stack[2]]; };
+function commit() {
+  if (entry === null) return;
+  stack[0] = Number(entry.replace(',', '.')) || 0;
+  entry = null; lift = true;
+}
+function binary(f) {
+  commit();
+  const r = f(stack[1], stack[0]);
+  if (!isFinite(r)) throw new Error('Resultado fora do limite da calculadora.');
+  stack = [r, stack[2], stack[3], stack[3]];
+  lift = true;
+}
+
+/* ---------- Teclas ---------- */
+function digit(d) {
+  if (fn && done) restart();
+  const inDate = fn && active >= 0 && fields[active].date;
+  if (entry === null) {
+    if (!fn && lift) shift();
+    entry = '';
+  }
+  if (inDate) {
+    if (d !== ',' && entry.length < 8) entry += d;
+    return;
+  }
+  if (entry.replace(/[-,]/g, '').length >= 15) return;
+  if (d === ',') { if (entry.includes(',')) return; entry += entry === '' || entry === '-' ? '0,' : ','; }
+  else if (entry === '0' || entry === '-0') entry = entry.slice(0, -1) + d;
+  else entry += d;
+  if (!fn) stack[0] = Number(entry.replace(',', '.')) || 0;
+}
+function pressEnter() {
+  if (fn) {
+    if (done) return restart();
+    return blockEnter();
+  }
+  commit(); shift(); lift = false;
+  say('Digite o segundo número e a operação.');
+}
+function pressBack() {
+  if (fn && done) return;
+  if (fn) {
+    if (entry !== null && entry !== '') { entry = entry.slice(0, -1); if (entry === '-') entry = ''; return; }
+    entry = null;
+    if (active > 0) { active--; repMode = false; hint(); }
+    return;
+  }
+  if (entry === null) { stack[0] = 0; lift = false; return; }
+  entry = entry.slice(0, -1);
+  if (entry === '' || entry === '-') { entry = null; stack[0] = 0; lift = false; }
+  else stack[0] = Number(entry.replace(',', '.')) || 0;
+}
+function pressSign() {
+  if (fn && active >= 0 && fields[active].date) return;
+  if (fn && done) return;
+  if (entry !== null && entry !== '') {
+    entry = entry.startsWith('-') ? entry.slice(1) : '-' + entry;
+    if (!fn) stack[0] = Number(entry.replace(',', '.')) || 0;
+  } else if (!fn) { stack[0] = -stack[0]; lift = true; }
+  else if (entry === null || entry === '') { entry = '-'; }
+}
+function pressOp(k, f) {
+  if (fn) {
+    if (fn.flow && k === 'mul' && !done) return flowRepeat();
+    if (done) { fn = null; fields = []; done = null; cat = null; drawSub(); }
+    else return say('Termine os blocos com ENTER, ou toque em Limpar.', true);
+  }
+  binary(f);
+  say('');
+}
+function clearAll() {
+  stack = [0, 0, 0, 0]; entry = null; lift = false; fn = null; fields = []; vals = {}; active = -1; done = null; repMode = false;
+  juros = {}; flow = { i: null, cfs: [] }; cat = null;
+  say(HOME);
+  drawSub();
+}
+function selectCat(c) {
+  fn = null; fields = []; vals = {}; active = -1; done = null; entry = null; repMode = false;
+  stack = [0, 0, 0, 0]; lift = false; juros = {}; flow = { i: null, cfs: [] };
+  cat = cat === c ? null : c;
+  if (cat) say(CATS[cat].hint, true); else say(HOME);
+  drawSub();
+}
+const CATS = {
+  juros: { l: 'Juros', hint: 'Selecione o que quer calcular: n, i, PV, PMT ou FV.', subs: [['n', 'n'], ['i', 'i'], ['PV', 'PV'], ['PMT', 'PMT'], ['FV', 'FV']].map(([id, l]) => ({ id: 'j' + id, l })) },
+  taxas: { l: 'Taxas', hint: 'Selecione a conversão nas teclas verdes.', subs: [{ id: 'equiv', l: 'Equiv.' }, { id: 'aam', l: 'a.a.→ a.m.' }, { id: 'maa', l: 'a.m.→ a.a.' }, { id: 'du', l: 'a.a.→ du' }, { id: 'real', l: 'Real' }] },
+  fluxo: { l: 'Fluxo', hint: 'Selecione VPL ou TIR.', subs: [{ id: 'fvpl', l: 'VPL', a: () => startFlow('vpl') }, { id: 'ftir', l: 'TIR', a: () => startFlow('tir') }, { id: 'fnovo', l: 'Novo fluxo', a: () => {
+    flow = { i: null, cfs: [] };
+    if (fn) { vals = {}; startFlow(fn.flow); } else say('Selecione VPL ou TIR.', true);
+  } }] },
+  datas: { l: 'Datas', hint: 'Selecione Dias entre ou Data + dias.', subs: [{ id: 'dias', l: 'Dias entre' }, { id: 'soma', l: 'Data + dias' }, { id: 'hoje', l: 'Hoje', a: () => {
+    if (!fn || active < 0 || !fields[active].date) throw new Error('Selecione Dias entre ou Data + dias.');
+    const n = new Date();
+    entry = p2(n.getDate()) + p2(n.getMonth() + 1) + n.getFullYear();
+    blockEnter();
+  } }] },
+  parcelas: { l: 'Parcelas', hint: 'Selecione Valor da parcela ou Amortização.', subs: [{ id: 'price', l: 'Valor da parcela' }, { id: 'amort', l: 'Amortização' }] }
+};
+const MATH = [{ id: 'pct', l: '%' }, { id: 'dpct', l: 'Δ%' }, { id: 'tpct', l: '%T' }, { id: 'pow', l: 'yˣ' }, { id: 'inv', l: '1/x', a: () => {
+  fn = null; fields = []; active = -1; done = null; commit();
+  if (X() === 0) throw new Error('Não dá para dividir por zero.');
+  stack[0] = 1 / X(); lift = true; say('');
+} }];
+
+function drawSub() {
+  const list = cat ? CATS[cat].subs : MATH;
+  $('sub').innerHTML = list.map(s => '<button type="button" data-s="' + s.id + '" class="k ' + (cat ? 'subk' : 'mathk') + '">' + s.l + '</button>').join('');
+}
+function digitKey(d) { return { id: d, l: d, c: 'd', a: () => digit(d) }; }
+const op = (id, l, f) => ({ id, l, c: 'op', a: () => pressOp(id, f) });
+const PAD = [
+  { id: 'clear', l: 'Limpar', c: 'clear', a: clearAll }, digitKey('7'), digitKey('8'), digitKey('9'),
+  op('div', '÷', (y, x) => { if (x === 0) throw new Error('Não dá para dividir por zero.'); return y / x; }),
+  { id: 'chs', l: '+/−', c: 'fn', a: pressSign }, digitKey('4'), digitKey('5'), digitKey('6'),
+  op('mul', '×', (y, x) => y * x),
+  { id: 'enter', l: 'ENTER', c: 'enter', a: pressEnter }, digitKey('1'), digitKey('2'), digitKey('3'),
+  op('sub', '−', (y, x) => y - x),
+  digitKey('0'), { id: 'comma', l: ',', c: 'd', a: () => digit(',') },
+  { id: 'back', l: '⌫', c: 'fn', a: pressBack },
+  op('add', '+', (y, x) => y + x)
+];
+$('pad').innerHTML = '<div id="funcs"><span id="sec">FUNÇÕES</span>' + Object.keys(CATS).map(c => '<button type="button" data-c="' + c + '" id="c-' + c + '" class="k cat">' + CATS[c].l + '</button>').join('') +
+  '<div id="sub"></div></div>' +
+  PAD.map(k => '<button type="button" data-k="' + k.id + '" id="k-' + k.id + '" class="k ' + k.c + '">' + k.l + '</button>').join('');
+drawSub();
+
+/* ---------- Tela ---------- */
+function blockValue(f, j) {
+  if (j === active && entry !== null) {
+    if (f.date) return maskDate(entry);
+    return (repMode ? fmt(flow.cfs[f.cf].v, 0, 2) + ' ×' : '') + entryShown();
+  }
+  if (f.cf !== undefined) {
+    const c = flow.cfs[f.cf];
+    if (!c) return repMode && j === active ? '' : '';
+    return fmt(c.v, 0, 2) + (c.n > 1 ? ' ×' + c.n : '') + (repMode && j === active ? ' ×' : '');
+  }
+  const v = vals[f.k];
+  if (v === null || v === undefined) return '';
+  if (f.date) return dateShort(v);
+  return fmt(v, 0, 4) + (f.unit || '');
+}
+function entryShown() {
+  if (entry === '') return '';
+  const neg = entry.startsWith('-'), [a, b] = entry.replace('-', '').split(',');
+  return (neg ? '−' : '') + (a === undefined || a === '' ? '' : a.replace(/\B(?=(\d{3})+(?!\d))/g, '.')) + (b === undefined ? '' : ',' + b);
+}
+function maskDate(s) {
+  const t = s.padEnd(8, '_');
+  return t.slice(0, 2) + '/' + t.slice(2, 4) + '/' + t.slice(4);
+}
+function render() {
+  const blocking = !!fn;
+  $('app').className = locked() ? 'free locked' : blocking ? 'blocking' : 'free';
+  $('k-mul').classList.toggle('live', !!(fn && fn.flow && !done));
+  $('title').textContent = fn ? fn.title : cat ? CATS[cat].l : '';
+  $('y').textContent = !fn && stack[1] !== 0 ? 'Y  ' + fmt(stack[1], decFor('money')) : '';
+  $('blocks').hidden = !blocking;
+  if (blocking) {
+    const from = Math.max(0, fields.length - 6);
+    $('blocks').innerHTML = fields.slice(from).map((f, s) => {
+      const j = s + from;
+      return '<button type="button" class="b' + (j === active ? ' on' : '') + '" data-b="' + j + '"><span class="bl">' + f.l + '</span><span class="bv">' + blockValue(f, j) + '</span></button>';
+    }).join('');
+  }
+  let text;
+  if (done) text = resultText(done);
+  else if (fn) {
+    const f = active >= 0 ? fields[active] : null;
+    text = entry !== null && entry !== '' ? (f && f.date ? maskDate(entry) : entryShown()) : (f && f.date ? '__/__/____' : '0');
+  } else text = entry !== null ? entryShown() || '0' : fmt(X(), decFor('money'));
+  const xEl = $('x');
+  xEl.textContent = text;
+  xEl.style.fontSize = text.length > 19 ? '20px' : text.length > 15 ? '25px' : text.length > 12 ? '30px' : '';
+  const m = $('msg'); m.textContent = msgText; m.className = msgErr ? 'err' : '';
+  $('btnEnd').setAttribute('aria-pressed', String(!begin));
+  $('btnBeg').setAttribute('aria-pressed', String(begin));
+  $('btnC').setAttribute('aria-pressed', String(compound));
+  ['auto', 2, 4, 6].forEach(d => $('dec' + d).setAttribute('aria-pressed', String(dec === d)));
+  Object.keys(CATS).forEach(c => $('c-' + c).classList.toggle('sel', c === cat));
+  document.querySelectorAll('#sub .k').forEach(b => b.classList.toggle('sel', !!fn && (fn.id === b.dataset.s)));
+}
+const locked = () => !!cat && !fn;
+function warnLocked() {
+  say(CATS[cat].hint, true);
+  try { navigator.vibrate && navigator.vibrate(30); } catch (_) {}
+  render();
+}
+function pressKey(id) {
+  if (locked() && id !== 'clear') return warnLocked();
+  run(PAD.find(x => x.id === id).a);
+}
+function run(f) {
+  msgErr = false;
+  try { f(); }
+  catch (e) { say(e.message, true); try { navigator.vibrate && navigator.vibrate(30); } catch (_) {} }
+  render();
+}
+document.addEventListener('click', e => {
+  const c = e.target.closest('[data-c]'), s = e.target.closest('[data-s]'), k = e.target.closest('[data-k]'), b = e.target.closest('[data-b]');
+  if (c) return run(() => selectCat(c.dataset.c));
+  if (s) {
+    const list = cat ? CATS[cat].subs : MATH, def = list.find(x => x.id === s.dataset.s);
+    return run(() => { if (def.a) def.a(); else openFn(def.id); });
+  }
+  if (k) return pressKey(k.dataset.k);
+  if (b) return run(() => focusBlock(Number(b.dataset.b)));
+});
+$('btnEnd').onclick = () => run(() => { begin = false; say('Parcelas no fim do período.'); });
+$('btnBeg').onclick = () => run(() => { begin = true; say('Parcelas no início do período.'); });
+$('btnC').onclick = () => run(() => { compound = !compound; say(compound ? 'C ligado: juros compostos no período fracionário.' : 'C desligado: juros simples no período fracionário, como a HP de fábrica.'); });
+['auto', 2, 4, 6].forEach(d => { $('dec' + d).onclick = () => { dec = d; render(); }; });
+document.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const map = { '+': 'add', '-': 'sub', '*': 'mul', '/': 'div', Enter: 'enter', Backspace: 'back', ',': 'comma', '.': 'comma' };
+  const id = /^[0-9]$/.test(e.key) ? e.key : map[e.key];
+  if (!id) return;
+  e.preventDefault();
+  pressKey(id);
+});
+
+say(HOME);
+render();
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+}
+</script>
+</body>
+</html>
