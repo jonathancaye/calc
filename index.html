@@ -621,7 +621,7 @@ function selectCat(c) {
 }
 const CATS = {
   juros: { l: 'Juros', hint: 'Selecione o que quer calcular: n, i, PV, PMT ou FV.', subs: [['n', 'n'], ['i', 'i'], ['PV', 'PV'], ['PMT', 'PMT'], ['FV', 'FV']].map(([id, l]) => ({ id: 'j' + id, l })) },
-  taxas: { l: 'Taxas', hint: 'Selecione a conversão nas teclas verdes.', subs: [{ id: 'equiv', l: 'Equiv.' }, { id: 'aam', l: 'a.a.→ a.m.' }, { id: 'maa', l: 'a.m.→ a.a.' }, { id: 'du', l: 'a.a.→ du' }, { id: 'real', l: 'Real' }] },
+  taxas: { l: 'Taxas', hint: 'Selecione a conversão nas teclas verdes.', subs: [{ id: 'equiv', l: 'Equiv.' }, { id: 'aam', l: 'a.a.→ a.m.' }, { id: 'maa', l: 'a.m.→ a.a.' }, { id: 'real', l: 'Real' }] },
   fluxo: { l: 'Fluxo', hint: 'Selecione VPL ou TIR.', subs: [{ id: 'fvpl', l: 'VPL', a: () => startFlow('vpl') }, { id: 'ftir', l: 'TIR', a: () => startFlow('tir') }, { id: 'fnovo', l: 'Novo fluxo', a: () => {
     flow = { i: null, cfs: [] };
     if (fn) { vals = {}; startFlow(fn.flow); } else say('Selecione VPL ou TIR.', true);
