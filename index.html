@@ -203,6 +203,41 @@ function equivRate(rate, q, t) {
   return (Math.pow(1 + rate / 100, q / t) - 1) * 100;
 }
 const npv = (s, r) => s.reduce((acc, c, t) => acc + c * Math.pow(1 + r, -t), 0);
+/* Feriados nacionais (mesmas regras do calendário ANBIMA): fixos + móveis pela Páscoa. */
+const HOL = {};
+function easter(y) {
+  const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4;
+  const f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const mo = Math.floor((h + l - 7 * m + 114) / 31), da = ((h + l - 7 * m + 114) % 31) + 1;
+  return Math.round(Date.UTC(y, mo - 1, da) / 864e5);
+}
+function holidays(y) {
+  if (HOL[y]) return HOL[y];
+  const D = (m, d) => Math.round(Date.UTC(y, m - 1, d) / 864e5), E = easter(y);
+  const list = [D(1, 1), E - 48, E - 47, E - 2, D(4, 21), D(5, 1), E + 60, D(9, 7), D(10, 12), D(11, 2), D(11, 15), D(12, 25)];
+  if (y >= 2024) list.push(D(11, 20));
+  return (HOL[y] = new Set(list));
+}
+const yearOf = d => new Date(d * 864e5).getUTCFullYear();
+function isBiz(d) {
+  const w = new Date(d * 864e5).getUTCDay();
+  return w !== 0 && w !== 6 && !holidays(yearOf(d)).has(d);
+}
+// Dias úteis de a (inclusive) até b (exclusive), convenção de renda fixa.
+function bizDays(a, b) {
+  const sign = b < a ? -1 : 1, lo = Math.min(a, b), hi = Math.max(a, b);
+  if (hi - lo > 366 * 200) throw new Error('Use um intervalo de até 200 anos.');
+  let n = 0;
+  for (let d = lo; d < hi; d++) if (isBiz(d)) n++;
+  return sign * n;
+}
+function addBiz(a, n) {
+  if (Math.abs(n) > 252 * 200) throw new Error('Use até 50.400 dias úteis.');
+  let d = a, step = n < 0 ? -1 : 1, left = Math.abs(n);
+  while (left > 0) { d += step; if (isBiz(d)) left--; }
+  return d;
+}
 const WEEK = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const p2 = v => String(v).padStart(2, '0');
 const dateShort = d => { const c = new Date(d * 864e5); return p2(c.getUTCDate()) + '/' + p2(c.getUTCMonth() + 1) + '/' + c.getUTCFullYear(); };
@@ -242,7 +277,7 @@ function decFor(kind) {
 }
 function resultText(r) {
   if (r.kind === 'date') return weekday(r.v) + ' ' + dateShort(r.v);
-  return fmt(r.v, decFor(r.kind)) + (r.kind === 'rate' ? '%' : r.kind === 'int' ? ' dias' : '');
+  return r.kind === 'du' ? fmt(r.v, 0) + ' du' : fmt(r.v, decFor(r.kind)) + (r.kind === 'rate' ? '%' : r.kind === 'int' ? ' dias' : '');
 }
 
 /* ---------- Funções com blocos ---------- */
@@ -295,12 +330,29 @@ const FNS = {
       return { v: ((1 + v.n / 100) / (1 + v.i / 100) - 1) * 100, kind: 'rate', msg: 'Taxa real.' };
     }
   },
-  dias: {
-    id: 'dias', title: 'Datas › Dias entre', fields: [
+  du: {
+    id: 'du', title: 'Datas › Dias úteis', fields: [
       F('a', 'Início', 'Digite a data só com números: 01012026.', { date: true }),
       F('b', 'Fim', 'Digite a data final: 31122026.', { date: true })
     ],
-    calc: v => ({ v: v.b - v.a, kind: 'int', msg: 'Dias corridos.' })
+    calc: v => ({ v: bizDays(v.a, v.b), kind: 'du', msg: fmt(v.b - v.a, 0) + ' dias corridos. Feriados nacionais ANBIMA.' })
+  },
+  somadu: {
+    id: 'somadu', title: 'Datas › Data + du', fields: [
+      F('a', 'Data', 'Digite a data só com números: 01012026.', { date: true }),
+      F('d', 'Dias úteis', 'Dias úteis a somar.')
+    ],
+    calc: v => {
+      if (!Number.isInteger(v.d)) throw new Error('Digite os dias sem decimais.');
+      return { v: addBiz(v.a, v.d), kind: 'date', msg: 'Nova data, pulando fins de semana e feriados nacionais.' };
+    }
+  },
+  dias: {
+    id: 'dias', title: 'Datas › Dias corridos', fields: [
+      F('a', 'Início', 'Digite a data só com números: 01012026.', { date: true }),
+      F('b', 'Fim', 'Digite a data final: 31122026.', { date: true })
+    ],
+    calc: v => ({ v: v.b - v.a, kind: 'int', msg: fmt(bizDays(v.a, v.b), 0) + ' dias úteis. Feriados nacionais ANBIMA.' })
   },
   soma: {
     id: 'soma', title: 'Datas › Data + dias', fields: [
@@ -587,8 +639,8 @@ const CATS = {
     flow = { i: null, cfs: [] };
     if (fn) { vals = {}; startFlow(fn.flow); } else say('Selecione VPL ou TIR.', true);
   } }] },
-  datas: { l: 'Datas', hint: 'Selecione Dias entre ou Data + dias.', subs: [{ id: 'dias', l: 'Dias entre' }, { id: 'soma', l: 'Data + dias' }, { id: 'hoje', l: 'Hoje', a: () => {
-    if (!fn || active < 0 || !fields[active].date) throw new Error('Selecione Dias entre ou Data + dias.');
+  datas: { l: 'Datas', hint: 'Selecione o cálculo de datas nas teclas verdes.', subs: [{ id: 'dias', l: 'Dias corridos' }, { id: 'du', l: 'Dias úteis' }, { id: 'soma', l: 'Data + dias' }, { id: 'somadu', l: 'Data + du' }, { id: 'hoje', l: 'Hoje', a: () => {
+    if (!fn || active < 0 || !fields[active].date) throw new Error('Escolha um cálculo de datas e use Hoje num bloco de data.');
     const n = new Date();
     entry = p2(n.getDate()) + p2(n.getMonth() + 1) + n.getFullYear();
     blockEnter();
