@@ -1,0 +1,934 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Calc 2</title>
+<meta name="description" content="Calculadora financeira para celular, com blocos no visor.">
+<meta name="theme-color" content="#1F2426">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Calc 2">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<style>
+/* Layout: uma calculadora só. Visor com blocos, moldura de funções e teclado RPN. Fita e tabela abrem por cima, em tela cheia. */
+:root {
+  --body: #1F2426; --key: #454D50; --key-dark: #2E3437; --key-edge: #0F1213; --line: #3A4245;
+  --ink: #F3F6F5; --muted: #A9B6B4; --teal: #0F8A7E; --teal-ink: #FFFFFF; --orange: #EE7A24; --orange-ink: #231003;
+  --lcd: #C9D6C5; --lcd-ink: #17231F; --lcd-muted: #4A5B52; --lcd-pill: #B2C2AE; --lcd-err: #B00012;
+  --num: ui-monospace, "SF Mono", SFMono-Regular, Menlo, "Roboto Mono", Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color-scheme: dark; background: #1F2426;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { position: fixed; inset: 0; width: 100%; height: 100%; margin: 0; overflow: hidden; overscroll-behavior: none; }
+body { background: var(--body); color: var(--ink); font-family: var(--sans); }
+[hidden] { display: none !important; }
+button { font: inherit; color: inherit; border: 0; background: none; padding: 0; cursor: pointer; touch-action: manipulation; }
+button:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
+
+#app {
+  height: 100%; max-width: 440px; max-height: 920px; margin-inline: auto;
+  display: flex; flex-direction: column; gap: 10px;
+  padding-top: calc(10px + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  user-select: none; -webkit-user-select: none;
+}
+
+/* Visor */
+#lcd { background: var(--lcd); color: var(--lcd-ink); border-radius: 8px; padding: 8px 10px; flex: none; min-height: 232px; display: flex; flex-direction: column; gap: 4px; box-shadow: inset 0 0 0 3px var(--key-edge); }
+.lcd-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.pill { display: inline-flex; background: var(--lcd-pill); border-radius: 999px; padding: 2px; }
+.pill button { min-width: 28px; min-height: 26px; padding-inline: 7px; border-radius: 999px; font-size: 12px; font-weight: 700; color: var(--lcd-muted); }
+.pill button[aria-pressed="true"] { background: var(--lcd-ink); color: var(--lcd); }
+#line { display: flex; justify-content: space-between; gap: 10px; min-height: 18px; font-size: 13px; color: var(--lcd-muted); }
+#title { font-weight: 700; color: var(--lcd-ink); white-space: nowrap; }
+#y { font-family: var(--num); white-space: nowrap; overflow: hidden; }
+#blocks { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+.b { min-width: 0; min-height: 40px; border-radius: 6px; border: 1.5px solid var(--lcd-muted); padding: 3px 6px; display: flex; flex-direction: column; justify-content: center; text-align: left; gap: 1px; color: var(--lcd-ink); }
+.b .bl { font-size: 11px; line-height: 1.1; color: var(--lcd-muted); white-space: nowrap; overflow: hidden; }
+.b .bv { font-family: var(--num); font-size: 14px; line-height: 1.15; min-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.b.on { background: var(--lcd-ink); border-color: var(--lcd-ink); color: var(--lcd); }
+.b.on .bl { color: var(--lcd-pill); }
+#x { font-family: var(--num); font-size: 38px; line-height: 1.12; font-weight: 500; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; margin-top: auto; }
+#app.free #x { font-size: 46px; }
+#x .ln { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 28px; line-height: 1.2; }
+#x.l3 .ln { font-size: 22px; }
+#x .ln small { font: 600 13px var(--sans); color: var(--lcd-muted); letter-spacing: .03em; }
+#x.tap { cursor: pointer; }
+#msg { font-size: 13px; line-height: 1.25; min-height: 2.5em; margin: 0; color: var(--lcd-ink); }
+#msg.err { color: var(--lcd-err); font-weight: 600; }
+
+/* Teclas */
+#pad { flex: 1 1 0; min-height: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); grid-template-rows: minmax(104px, 2.4fr) repeat(4, minmax(36px, 1fr)); gap: 7px; }
+#funcs { grid-column: 1 / -1; position: relative; min-height: 0; margin: 6px -4px 0; padding: 14px 8px 10px; border: 1.5px solid var(--orange); border-radius: 10px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 7px; }
+#sec { position: absolute; top: -8px; left: 12px; padding-inline: 6px; background: var(--body); font-size: 11px; line-height: 14px; font-weight: 700; letter-spacing: .14em; color: var(--orange); }
+#sub { grid-column: 1 / -1; display: flex; gap: 7px; min-width: 0; }
+#sub .k { flex: 1 1 0; }
+#sub .k.off { opacity: .35; cursor: default; }
+.k { min-width: 0; border-radius: 8px; background: var(--key); box-shadow: 0 3px 0 var(--key-edge); display: flex; align-items: center; justify-content: center; padding: 2px; line-height: 1.1; font-weight: 600; font-size: 15px; text-align: center; transition: transform .05s; }
+.k:active { transform: translateY(3px); box-shadow: none; }
+.k.d { font-family: var(--num); font-size: 26px; font-weight: 500; }
+.k.op { background: var(--key-dark); font-size: 24px; }
+.k.fn { background: var(--key-dark); }
+.k.cat { background: var(--key-dark); font-size: 13.5px; }
+.k.cat.sel { background: var(--teal); color: var(--teal-ink); }
+.k.subk { background: var(--teal); color: var(--teal-ink); font-size: 13.5px; }
+.k.subk.sel { background: var(--orange); color: var(--orange-ink); }
+.k.mathk { background: var(--key-dark); font-size: 15px; }
+.k.clear { background: var(--key-dark); color: var(--orange); font-size: 13px; box-shadow: 0 3px 0 var(--key-edge), inset 0 0 0 1px var(--orange); }
+.k.enter { background: var(--orange); color: var(--orange-ink); font-size: 14px; letter-spacing: .06em; font-weight: 700; grid-row: span 2; }
+#app.blocking .k.op:not(.live) { opacity: .35; }
+#app.locked #pad > .k:not(.clear) { opacity: .35; }
+
+/* Fita e tabela */
+#sheet { position: fixed; inset: 0; z-index: 5; background: var(--body); display: flex; flex-direction: column; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+.sheet-head { flex: none; max-width: 440px; width: 100%; margin-inline: auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 12px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.sheet-head h2 { margin: 0; font-size: 19px; text-wrap: balance; }
+.sheet-head div { display: flex; gap: 8px; }
+.sheet-btn { min-height: 40px; padding-inline: 14px; border-radius: 8px; background: var(--key); font-weight: 600; font-size: 14px; }
+.sheet-btn.alt { background: var(--key-dark); color: var(--orange); box-shadow: inset 0 0 0 1px var(--orange); }
+.scroll { flex: 1 1 0; min-height: 0; overflow: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+.scroll-in { max-width: 440px; margin-inline: auto; padding-bottom: 24px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.tape { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.tape button { width: 100%; text-align: left; background: var(--key-dark); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; }
+.tape .tt { font-size: 12px; color: var(--muted); }
+.tape .tv { font-family: var(--num); font-size: 16px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.empty { color: var(--muted); font-size: 14px; line-height: 1.4; }
+.sum { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+.sum div { background: var(--lcd); color: var(--lcd-ink); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sum small { font-size: 11px; color: var(--lcd-muted); }
+.sum b { font: 600 14px var(--num); overflow-wrap: anywhere; }
+table { width: 100%; border-collapse: collapse; font: 13px var(--num); font-variant-numeric: tabular-nums; }
+th { position: sticky; top: 0; background: var(--body); text-align: right; font: 600 11px var(--sans); color: var(--muted); padding: 6px 4px; border-bottom: 1px solid var(--line); }
+td { text-align: right; padding: 6px 4px; border-bottom: 1px solid var(--key-dark); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; color: var(--muted); }
+
+@media (max-height: 640px) {
+  #lcd { min-height: 204px; } #x { font-size: 28px; } #app.free #x { font-size: 34px; } #msg { font-size: 12px; } .k.d { font-size: 20px; } .k.op { font-size: 19px; }
+  .b { min-height: 34px; } #x .ln { font-size: 22px; } #x.l3 .ln { font-size: 18px; }
+}
+@media (max-width: 370px) { table { font-size: 11.5px; } }
+@media (prefers-reduced-motion: reduce) { .k { transition: none; } }
+</style>
+</head>
+<body>
+
+<div id="app" class="free">
+  <section id="lcd" aria-label="Visor">
+    <div class="lcd-top">
+      <div class="pill" role="group" aria-label="Momento da parcela">
+        <button type="button" id="btnEnd" aria-pressed="true">END</button>
+        <button type="button" id="btnBeg" aria-pressed="false">BEG</button>
+      </div>
+      <div class="pill" role="group" aria-label="Período fracionário">
+        <button type="button" id="btnC" aria-pressed="true" title="Juros compostos no período fracionário">C</button>
+      </div>
+      <div class="pill" role="group" aria-label="Casas decimais">
+        <button type="button" id="decauto" aria-pressed="true">Auto</button>
+        <button type="button" id="dec2" aria-pressed="false">2</button>
+        <button type="button" id="dec4" aria-pressed="false">4</button>
+        <button type="button" id="dec6" aria-pressed="false">6</button>
+      </div>
+      <div class="pill">
+        <button type="button" id="btnTape" aria-pressed="false">Fita</button>
+      </div>
+    </div>
+    <div id="line"><span id="title"></span><span id="y"></span></div>
+    <div id="blocks"></div>
+    <div id="x" aria-live="polite">0,00</div>
+    <p id="msg" aria-live="polite"></p>
+  </section>
+  <section id="pad" aria-label="Teclado"></section>
+</div>
+
+<div id="sheet" hidden>
+  <div class="sheet-head">
+    <h2 id="sheetTitle"></h2>
+    <div><button type="button" class="sheet-btn alt" id="sheetClear" hidden>Apagar fita</button><button type="button" class="sheet-btn" id="sheetClose">Voltar</button></div>
+  </div>
+  <div class="scroll" id="sheetScroll"><div class="scroll-in" id="sheetBody"></div></div>
+</div>
+
+<script>
+document.documentElement.lang = 'pt-BR';
+const $ = id => document.getElementById(id);
+
+/* ---------- Matemática financeira ---------- */
+function factors(i, n, begin) {
+  const r = i / 100;
+  if (r === 0) return { v: 1, ann: n };
+  const v = Math.pow(1 + r, -n);
+  return { v, ann: (1 + (begin ? r : 0)) * (1 - v) / r };
+}
+function solveRate(f) {
+  const test = (a, b) => {
+    let fa = f(a), fb = f(b);
+    if (!isFinite(fa) || !isFinite(fb)) return null;
+    if (fa === 0) return a;
+    if (fb === 0) return b;
+    if (fa * fb > 0) return null;
+    for (let j = 0; j < 300 && Math.abs(b - a) > 1e-14; j++) {
+      const m = (a + b) / 2, fm = f(m);
+      if (fa * fm <= 0) { b = m; fb = fm; } else { a = m; fa = fm; }
+    }
+    return (a + b) / 2;
+  };
+  let up = 0, down = 0;
+  for (let k = 0; k < 75; k++) {
+    const s = 1e-4 * Math.pow(1.25, k);
+    let res = test(up, s); up = s;
+    if (res !== null) return res;
+    if (down > -0.9999) {
+      const q = Math.max(-s, -0.9999);
+      res = test(q, down); down = q;
+      if (res !== null) return res;
+    }
+  }
+  return null;
+}
+const NOSOL = 'Sem solução com esses valores. Confira prazo, taxa e valores.';
+function tvmParts(i, n, begin, compound) {
+  const r = i / 100, whole = Math.floor(n), f = n - whole;
+  const pvF = f === 0 ? 1 : compound ? Math.pow(1 + r, f) : 1 + r * f;
+  const v = Math.pow(1 + r, -whole);
+  const ann = r === 0 ? whole : (1 + (begin ? r : 0)) * (1 - v) / r;
+  return { pvF, v, ann };
+}
+function tvmSolve(key, R, begin, compound) {
+  const { n, i, PV, PMT, FV } = R;
+  if (key === 'n') {
+    let exact;
+    if (i === 0) {
+      if (PMT === 0) throw new Error(NOSOL);
+      exact = -(PV + FV) / PMT;
+      if (exact <= 0) throw new Error(NOSOL);
+    } else {
+      const r = i / 100, A = PMT * (1 + (begin ? r : 0)) / r, v = (PV + A) / (A - FV);
+      if (!(v > 0) || !isFinite(v)) throw new Error(NOSOL);
+      exact = -Math.log(v) / Math.log(1 + r);
+    }
+    if (!(exact > 0)) throw new Error(NOSOL);
+    return { v: exact - Math.floor(exact) < 0.005 ? Math.floor(exact) : Math.ceil(exact), exact };
+  }
+  if (key === 'i') {
+    const bal = x => { const t = tvmParts(x * 100, n, begin, compound); return PV * t.pvF + PMT * t.ann + FV * t.v; };
+    const r = solveRate(bal);
+    if (r === null) throw new Error(NOSOL);
+    return { v: r * 100 };
+  }
+  if (i <= -100) throw new Error('Use i maior que −100%.');
+  const { pvF, v, ann } = tvmParts(i, n, begin, compound);
+  if (key === 'PV') return { v: -(PMT * ann + FV * v) / pvF };
+  if (key === 'FV') return { v: -(PV * pvF + PMT * ann) / v };
+  if (ann === 0) throw new Error('Para PMT, n precisa ser 1 ou maior.');
+  return { v: -(PV * pvF + FV * v) / ann };
+}
+function equivRate(rate, q, t) {
+  if (t === 0) throw new Error('O período não pode ser zero.');
+  if (rate <= -100) throw new Error('Use uma taxa maior que −100%.');
+  return (Math.pow(1 + rate / 100, q / t) - 1) * 100;
+}
+const npv = (s, r) => s.reduce((acc, c, t) => acc + c * Math.pow(1 + r, -t), 0);
+function payback(s, r) {
+  let acc = 0;
+  for (let t = 0; t < s.length; t++) {
+    const c = s[t] * Math.pow(1 + r, -t), prev = acc;
+    acc += c;
+    if (t > 0 && prev < 0 && acc >= 0) return t - 1 + (-prev / c);
+  }
+  return null;
+}
+function irTax(dc) { return dc <= 180 ? 22.5 : dc <= 360 ? 20 : dc <= 720 ? 17.5 : 15; }
+
+/* Feriados nacionais (mesmas regras do calendário ANBIMA): fixos + móveis pela Páscoa. */
+const HOL = {};
+function easter(y) {
+  const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4;
+  const f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const mo = Math.floor((h + l - 7 * m + 114) / 31), da = ((h + l - 7 * m + 114) % 31) + 1;
+  return Math.round(Date.UTC(y, mo - 1, da) / 864e5);
+}
+function holidays(y) {
+  if (HOL[y]) return HOL[y];
+  const D = (m, d) => Math.round(Date.UTC(y, m - 1, d) / 864e5), E = easter(y);
+  const list = [D(1, 1), E - 48, E - 47, E - 2, D(4, 21), D(5, 1), E + 60, D(9, 7), D(10, 12), D(11, 2), D(11, 15), D(12, 25)];
+  if (y >= 2024) list.push(D(11, 20));
+  return (HOL[y] = new Set(list));
+}
+const yearOf = d => new Date(d * 864e5).getUTCFullYear();
+function isBiz(d) {
+  const w = new Date(d * 864e5).getUTCDay();
+  return w !== 0 && w !== 6 && !holidays(yearOf(d)).has(d);
+}
+function bizDays(a, b) {
+  const sign = b < a ? -1 : 1, lo = Math.min(a, b), hi = Math.max(a, b);
+  if (hi - lo > 366 * 200) throw new Error('Use um intervalo de até 200 anos.');
+  let n = 0;
+  for (let d = lo; d < hi; d++) if (isBiz(d)) n++;
+  return sign * n;
+}
+function addBiz(a, n) {
+  if (Math.abs(n) > 252 * 200) throw new Error('Use até 50.400 dias úteis.');
+  let d = a, step = n < 0 ? -1 : 1, left = Math.abs(n);
+  while (left > 0) { d += step; if (isBiz(d)) left--; }
+  return d;
+}
+const WEEK = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+const p2 = v => String(v).padStart(2, '0');
+const dateShort = d => { const c = new Date(d * 864e5); return p2(c.getUTCDate()) + '/' + p2(c.getUTCMonth() + 1) + '/' + c.getUTCFullYear(); };
+const weekday = d => WEEK[new Date(d * 864e5).getUTCDay()];
+function parseDateDigits(s) {
+  if (s.length !== 8) throw new Error('Digite 8 números: dia, mês e ano. Ex.: 01012026.');
+  const d = +s.slice(0, 2), m = +s.slice(2, 4), y = +s.slice(4);
+  const t = Date.UTC(y, m - 1, d), c = new Date(t);
+  if (c.getUTCDate() !== d || c.getUTCMonth() !== m - 1) throw new Error('Data inválida. Confira dia e mês.');
+  return Math.round(t / 864e5);
+}
+
+/* ---------- Formatação ---------- */
+function fmt(v, min, max) {
+  if (!isFinite(v)) return 'Erro';
+  const a = Math.abs(v);
+  if (a >= 1e13) return v.toExponential(5).replace('.', ',').replace('-', '−');
+  const s = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: min, maximumFractionDigits: max === undefined ? min : max }).format(v);
+  return /[1-9]/.test(s) ? s.replace('-', '−') : s.replace('-', '');
+}
+const money = v => fmt(v, 2);
+const pct = v => fmt(v, decFor('rate')) + '%';
+
+/* ---------- Estado: o visor sempre abre zerado; ajustes e fita ficam guardados ---------- */
+const STORE = 'calc2';
+function load(k, d) { try { const v = JSON.parse(localStorage.getItem(STORE + '-' + k)); return v === null ? d : v; } catch (_) { return d; } }
+function save(k, v) { try { localStorage.setItem(STORE + '-' + k, JSON.stringify(v)); } catch (_) {} }
+let stack = [0, 0, 0, 0], entry = null, lift = true;
+let begin = load('begin', false), compound = load('compound', true), dec = load('dec', 'auto');
+let tape = load('tape', []);
+let cat = null, fn = null, fields = [], vals = {}, active = -1, done = null, repMode = false;
+let juros = {}, flow = { i: null, cfs: [] };
+const HOME = 'Escolha uma função ou faça uma conta.';
+let msgText = HOME, msgErr = false;
+const say = (t, err) => { msgText = t; msgErr = !!err; };
+
+function decFor(kind) {
+  if (dec !== 'auto') return dec;
+  return kind === 'rate' ? 4 : kind === 'int' ? 0 : 2;
+}
+function resultText(r) {
+  if (r.kind === 'date') return weekday(r.v) + ' ' + dateShort(r.v);
+  return fmt(r.v, decFor(r.kind)) + (r.kind === 'rate' ? '%' : r.kind === 'int' ? ' dias' : '');
+}
+function addTape(t, s, v) {
+  tape.unshift({ t, s, v: isFinite(v) ? v : null });
+  if (tape.length > 60) tape.length = 60;
+  save('tape', tape);
+}
+
+/* ---------- Funções com blocos ---------- */
+const F = (k, l, hint, extra) => Object.assign({ k, l, hint }, extra);
+const RATE = { unit: '%' };
+const need = (c, m) => { if (!c) throw new Error(m); };
+const intN = (n, m) => need(Number.isInteger(n) && n >= 1 && n <= 1200, m || 'O prazo precisa ser inteiro, de 1 a 1.200.');
+
+function jurosFn(t) {
+  const FK = { n: 'Número de períodos.', i: 'Taxa por período, em %.', PV: 'Valor presente. Pode digitar sem sinal.', PMT: 'Parcela. Se não houver, aperte ENTER vazio.', FV: 'Valor futuro. Se não houver, aperte ENTER vazio.' };
+  return {
+    id: 'j' + t, title: 'Juros › ' + t, carry: true,
+    fields: ['n', 'i', 'PV', 'PMT', 'FV'].filter(k => k !== t).map(k => F(k, k, FK[k], { opt: ['PV', 'PMT', 'FV'].includes(k), unit: k === 'i' ? '%' : '' })),
+    calc: v => {
+      const money3 = ['PV', 'PMT', 'FV'].filter(k => k !== t);
+      const filled = money3.filter(k => v[k] !== null && v[k] !== undefined).length;
+      const n2 = t === 'n' || t === 'i' ? 2 : 1;
+      need(filled >= n2, 'Preencha ' + (n2 === 2 ? 'dois de ' : 'um de ') + money3.join(', ') + '.');
+      const R = {}; ['n', 'i', 'PV', 'PMT', 'FV'].forEach(k => { R[k] = v[k] || 0; });
+      let r, flipped = false;
+      try { r = tvmSolve(t, R, begin, compound); }
+      catch (e) {
+        if (t !== 'n' && t !== 'i') throw e;
+        // Ajusta o sinal sozinho: o valor presente vira saída de dinheiro.
+        const R2 = Object.assign({}, R, { PV: -R.PV });
+        r = tvmSolve(t, R2, begin, compound); flipped = true;
+        if (v.PV !== null && v.PV !== undefined) v.PV = -v.PV;
+      }
+      juros = Object.assign({}, v, { [t]: r.v });
+      const note = flipped ? ' Sinal do PV ajustado: dinheiro que sai fica negativo.' : '';
+      if (t === 'n' && Math.abs(r.exact - r.v) > 1e-9) {
+        return { v: r.v, kind: 'money', lines: [['n', fmt(r.v, 0)], ['Exato', fmt(r.exact, 4)]], msg: 'n arredondado para cima, como na HP.' + note, long: true };
+      }
+      return { v: r.v, kind: t === 'i' ? 'rate' : 'money', msg: t + ' calculado.' + note };
+    }
+  };
+}
+
+function priceTable(V, i, n) {
+  const pmt = V / factors(i, n, begin).ann, rows = [];
+  let bal = V, tj = 0;
+  for (let j = 1; j <= n; j++) {
+    const jr = begin && j === 1 ? 0 : bal * i / 100, am = pmt - jr;
+    bal -= am; tj += jr;
+    rows.push([j, pmt, jr, am, Math.abs(bal) < 1e-6 ? 0 : bal]);
+  }
+  return { rows, pmt, tj, total: pmt * n };
+}
+function sacTable(V, i, n) {
+  const am = V / n, rows = [];
+  let bal = V, tj = 0, total = 0;
+  for (let j = 1; j <= n; j++) {
+    const jr = bal * i / 100;
+    bal -= am; tj += jr; total += am + jr;
+    rows.push([j, am + jr, jr, am, Math.abs(bal) < 1e-6 ? 0 : bal]);
+  }
+  return { rows, tj, total };
+}
+
+const FNS = {
+  /* Taxas */
+  equiv: {
+    id: 'equiv', title: 'Taxas › Equiv.',
+    fields: [
+      F('t', 'Taxa', 'Digite a taxa que você tem.', RATE),
+      F('p', 'Período', 'Período dessa taxa. Ex.: 12 meses, ou 252 dias úteis.'),
+      F('e', 'Equiv.', 'Período que você quer, na mesma unidade.')
+    ],
+    calc: v => ({ v: equivRate(v.t, v.e, v.p), kind: 'rate', msg: 'Taxa equivalente.' })
+  },
+  spread: {
+    id: 'spread', title: 'Taxas › Spread',
+    fields: [
+      F('i', 'Índice', 'CDI ou IPCA, em %. Para calcular este bloco, aperte ENTER vazio.', { unit: '%', opt: true }),
+      F('s', 'Spread', 'Spread sobre o índice, em %. Para calcular este bloco, aperte ENTER vazio.', { unit: '%', opt: true }),
+      F('t', 'Total', 'Taxa total, em %. Para calcular este bloco, aperte ENTER vazio.', { unit: '%', opt: true })
+    ],
+    calc: v => {
+      const empty = ['i', 's', 't'].filter(k => v[k] === null);
+      need(empty.length === 1, 'Preencha dois blocos e deixe vazio o que quer calcular.');
+      const f = k => 1 + v[k] / 100;
+      if (empty[0] === 't') return { v: (f('i') * f('s') - 1) * 100, kind: 'rate', msg: 'Taxa total: índice composto com o spread.', fill: 't' };
+      need((empty[0] === 's' ? f('i') : f('s')) > 0, 'Use taxas maiores que −100%.');
+      if (empty[0] === 's') return { v: (f('t') / f('i') - 1) * 100, kind: 'rate', msg: 'Spread sobre o índice. Com IPCA, é a taxa real.', fill: 's' };
+      return { v: (f('t') / f('s') - 1) * 100, kind: 'rate', msg: 'Índice implícito na taxa total.', fill: 'i' };
+    }
+  },
+  cdi: {
+    id: 'cdi', title: 'Taxas › % CDI',
+    fields: [F('c', 'CDI a.a.', 'Digite o CDI ao ano.', RATE), F('p', '% do CDI', 'Digite o percentual do CDI. Ex.: 110.', RATE)],
+    calc: v => {
+      need(v.c > -100, 'Use um CDI maior que −100%.');
+      const d = Math.pow(1 + v.c / 100, 1 / 252) - 1, t = Math.pow(1 + d * v.p / 100, 252) - 1;
+      const sp = ((1 + t) / (1 + v.c / 100) - 1) * 100;
+      return { v: t * 100, kind: 'rate', lines: [['Taxa a.a.', pct(t * 100)], ['= CDI +', pct(sp)]], msg: 'Capitalização diária, base 252.', long: true };
+    }
+  },
+  gross: {
+    id: 'gross', title: 'Taxas › Gross-up',
+    fields: [F('i', 'Taxa isenta', 'Taxa da LCI, LCA ou outro isento, ao ano.', RATE), F('d', 'Prazo (dc)', 'Prazo em dias corridos.')],
+    calc: v => {
+      need(Number.isInteger(v.d) && v.d >= 1, 'Digite o prazo em dias corridos, sem decimais.');
+      const a = irTax(v.d), liq = Math.pow(1 + v.i / 100, v.d / 365) - 1, bru = liq / (1 - a / 100);
+      const anual = (Math.pow(1 + bru, 365 / v.d) - 1) * 100;
+      return { v: anual, kind: 'rate', lines: [['CDB equiv.', pct(anual)], ['IR', fmt(a, 1) + '%']], msg: 'Taxa bruta que rende o mesmo após o IR regressivo.', long: true };
+    }
+  },
+  pu: {
+    id: 'pu', title: 'Taxas › PU',
+    fields: [
+      F('t', 'Taxa a.a.', 'Taxa do título ao ano, base 252.', RATE),
+      F('d', 'Dias úteis', 'Dias úteis até o vencimento. Datas › Dias entre calcula.'),
+      F('f', 'Valor face', 'Valor no vencimento. ENTER vazio usa 1.000.', { opt: true })
+    ],
+    calc: v => {
+      need(v.t > -100, 'Use uma taxa maior que −100%.');
+      const face = v.f === null ? 1000 : v.f, per = Math.pow(1 + v.t / 100, v.d / 252) - 1;
+      if (v.f === null) v.f = 1000;
+      return { v: face / (1 + per), kind: 'money', lines: [['PU', fmt(face / (1 + per), 6)], ['No período', pct(per * 100)]], msg: 'Preço unitário de título prefixado.', long: true };
+    }
+  },
+  /* Crédito */
+  price: {
+    id: 'price', title: 'Crédito › Price', table: true,
+    fields: [F('v', 'Valor', 'Valor financiado.'), F('i', 'Taxa', 'Taxa por período, em %.', RATE), F('n', 'Prazo', 'Número de parcelas.')],
+    calc: v => {
+      intN(v.n);
+      const T = priceTable(v.v, v.i, v.n);
+      return { v: T.pmt, kind: 'money', lines: [['Parcela', money(T.pmt)], ['Juros total', money(T.tj)], ['Total pago', money(T.total)]], msg: 'Toque no resultado para ver a tabela.', long: true,
+        table: { title: 'Price · ' + v.n + ' parcelas', rows: T.rows, sum: [['Parcela', money(T.pmt)], ['Juros', money(T.tj)], ['Total', money(T.total)]] } };
+    }
+  },
+  sac: {
+    id: 'sac', title: 'Crédito › SAC', table: true,
+    fields: [F('v', 'Valor', 'Valor financiado.'), F('i', 'Taxa', 'Taxa por período, em %.', RATE), F('n', 'Prazo', 'Número de parcelas.')],
+    calc: v => {
+      intN(v.n);
+      const T = sacTable(v.v, v.i, v.n), first = T.rows[0][1], last = T.rows[T.rows.length - 1][1];
+      return { v: first, kind: 'money', lines: [['1ª parcela', money(first)], ['Última', money(last)], ['Juros total', money(T.tj)]], msg: 'Toque no resultado para ver a tabela.', long: true,
+        table: { title: 'SAC · ' + v.n + ' parcelas', rows: T.rows, sum: [['1ª parcela', money(first)], ['Juros', money(T.tj)], ['Total', money(T.total)]] } };
+    }
+  },
+  prazo: {
+    id: 'prazo', title: 'Crédito › À vista × prazo',
+    fields: [F('a', 'À vista', 'Preço à vista.'), F('p', 'Parcela', 'Valor de cada parcela.'), F('n', 'Parcelas', 'Número de parcelas. Com BEG, a 1ª é paga na compra.')],
+    calc: v => {
+      intN(v.n, 'O número de parcelas precisa ser inteiro, de 1 a 1.200.');
+      need(v.a > 0 && v.p > 0, 'Digite valores positivos.');
+      if (v.p * v.n <= v.a) return { v: 0, kind: 'rate', lines: [['Juros a.m.', '0%'], ['Desconto', money(v.a - v.p * v.n)]], msg: 'O parcelado sai mais barato ou igual ao à vista.', long: true };
+      const r = solveRate(x => v.a - v.p * factors(x * 100, v.n, begin).ann);
+      need(r !== null, NOSOL);
+      return { v: r * 100, kind: 'rate', lines: [['Juros por mês', pct(r * 100)], ['Ao ano', pct(equivRate(r * 100, 12, 1))]], msg: 'Se render mais que isso, vale parcelar. ' + (begin ? '1ª parcela na compra (BEG).' : '1ª parcela em 30 dias (END).'), long: true };
+    }
+  },
+  simples: {
+    id: 'simples', title: 'Crédito › Juros simples',
+    fields: [F('c', 'Capital', 'Valor inicial.'), F('i', 'Taxa', 'Taxa por período, em %.', RATE), F('n', 'Prazo', 'Número de períodos. Pode ter decimais.')],
+    calc: v => {
+      const j = v.c * v.i / 100 * v.n;
+      return { v: v.c + j, kind: 'money', lines: [['Juros', money(j)], ['Montante', money(v.c + j)]], msg: 'Juros simples, sem capitalização.', long: true };
+    }
+  },
+  desc: {
+    id: 'desc', title: 'Crédito › Desconto',
+    fields: [F('n', 'Valor face', 'Valor do título no vencimento.'), F('d', 'Taxa desc.', 'Taxa de desconto ao mês, em %.', RATE), F('t', 'Prazo (dc)', 'Dias corridos até o vencimento.')],
+    calc: v => {
+      need(v.t > 0, 'O prazo precisa ser maior que zero.');
+      const D = v.n * v.d / 100 * v.t / 30, L = v.n - D;
+      need(L > 0, 'O desconto ficou maior que o valor do título.');
+      const ef = (Math.pow(v.n / L, 30 / v.t) - 1) * 100;
+      return { v: L, kind: 'money', lines: [['Líquido', money(L)], ['Desconto', money(D)], ['Taxa efetiva', pct(ef) + ' a.m.']], msg: 'Desconto comercial (por fora). Taxa efetiva composta ao mês.', long: true };
+    }
+  },
+  /* Datas */
+  dias: {
+    id: 'dias', title: 'Datas › Dias entre', fields: [
+      F('a', 'Início', 'Digite a data só com números: 01012026.', { date: true }),
+      F('b', 'Fim', 'Digite a data final: 31122026.', { date: true })
+    ],
+    calc: v => ({ v: v.b - v.a, kind: 'int', lines: [['Corridos', fmt(v.b - v.a, 0) + ' dias'], ['Úteis', fmt(bizDays(v.a, v.b), 0) + ' dias']], msg: 'Dias úteis com feriados nacionais ANBIMA.', long: true })
+  },
+  soma: {
+    id: 'soma', title: 'Datas › Data + dias', fields: [
+      F('a', 'Data', 'Digite a data só com números: 01012026.', { date: true }),
+      F('d', 'Dias', 'Dias a somar.')
+    ],
+    calc: v => {
+      need(Number.isInteger(v.d), 'Digite os dias sem decimais.');
+      const u = addBiz(v.a, v.d);
+      return { v: v.a + v.d, kind: 'date', lines: [['Corridos', weekday(v.a + v.d) + ' ' + dateShort(v.a + v.d)], ['Úteis', weekday(u) + ' ' + dateShort(u)]], msg: 'Dias úteis com feriados nacionais ANBIMA.', long: true };
+    }
+  },
+  /* Teclas de cálculo */
+  pct: { id: 'pct', title: '%', fields: [F('b', 'Valor', 'Digite o valor.'), F('p', 'Percentual', 'Digite o percentual.', RATE)], calc: v => ({ v: v.b * v.p / 100, kind: 'money', msg: 'Percentual do valor.' }) },
+  dpct: { id: 'dpct', title: 'Δ% Variação', fields: [F('a', 'Base', 'Digite o valor inicial.'), F('b', 'Novo', 'Digite o valor novo.')], calc: v => { need(v.a !== 0, 'A base não pode ser zero.'); return { v: (v.b - v.a) / v.a * 100, kind: 'rate', msg: 'Variação.' }; } },
+  tpct: { id: 'tpct', title: '%T Participação', fields: [F('t', 'Total', 'Digite o total.'), F('p', 'Parte', 'Digite a parte.')], calc: v => { need(v.t !== 0, 'O total não pode ser zero.'); return { v: v.p / v.t * 100, kind: 'rate', msg: 'Participação no total.' }; } },
+  pow: { id: 'pow', title: 'yˣ Potência', fields: [F('y', 'Base', 'Digite a base.'), F('x', 'Expoente', 'Digite o expoente.')], calc: v => ({ v: Math.pow(v.y, v.x), kind: 'money', msg: 'Potência.' }) }
+};
+['n', 'i', 'PV', 'PMT', 'FV'].forEach(t => { FNS['j' + t] = jurosFn(t); });
+
+/* ---------- Fluxo: blocos crescem a cada CF ---------- */
+const FLOW_T = { vpl: 'VPL', tir: 'TIR', pay: 'Payback' };
+function startFlow(kind) {
+  fn = { id: 'f' + kind, flow: kind, title: 'Fluxo › ' + FLOW_T[kind] };
+  buildFlow(); done = null; repMode = false; entry = null;
+  active = kind !== 'tir' && flow.i === null ? 0 : fields.length - 1;
+  if (flow.cfs.length >= 2 && (kind === 'tir' || flow.i !== null)) computeFlow();
+  else hint();
+}
+function buildFlow() {
+  fields = []; vals = {};
+  if (fn.flow !== 'tir') { fields.push(F('i', 'i', fn.flow === 'pay' ? 'Taxa por período, para o payback descontado.' : 'Taxa por período.', RATE)); vals.i = flow.i; }
+  flow.cfs.forEach((c, j) => { fields.push(F('c' + j, 'CF' + j, '', { cf: j })); vals['c' + j] = c.v; });
+  const j = flow.cfs.length;
+  fields.push(F('c' + j, 'CF' + j, '', { cf: j, last: true })); vals['c' + j] = null;
+}
+function flowHint() {
+  const f = fields[active];
+  if (f.k === 'i') return f.hint;
+  if (f.cf === 0) return 'CF0: valor de hoje. Saída de dinheiro vai negativa (+/−).';
+  if (repMode) return 'Quantas vezes esse valor se repete? Digite e aperte ENTER.';
+  return 'CF' + f.cf + ': digite o valor. Para repetir, use ×.' + (f.cf >= 2 ? ' ENTER vazio calcula.' : '');
+}
+function computeFlow() {
+  need(flow.cfs.length >= 2, 'Lance CF0 e pelo menos um CF.');
+  const s = [];
+  flow.cfs.forEach(c => { for (let k = 0; k < c.n; k++) s.push(c.v); });
+  need(s.length <= 1e5, 'Use até 100.000 períodos.');
+  if (fn.flow !== 'tir' && flow.i === null) { active = 0; throw new Error('Preencha i.'); }
+  let r;
+  if (fn.flow === 'vpl') {
+    r = { v: npv(s, flow.i / 100), kind: 'money', msg: 'VPL. Toque em TIR ou Payback para usar o mesmo fluxo.' };
+  } else if (fn.flow === 'tir') {
+    need(s.some(v => v < 0) && s.some(v => v > 0), 'Sem TIR. O fluxo precisa ter entrada e saída. Use +/− no valor que sai.');
+    const t = solveRate(v => npv(s, v));
+    need(t !== null, 'Sem TIR para esse fluxo.');
+    r = { v: t * 100, kind: 'rate', msg: 'TIR por período. Toque em VPL ou Payback para usar o mesmo fluxo.' };
+  } else {
+    const ps = payback(s, 0), pd = payback(s, flow.i / 100);
+    const show = x => x === null ? 'não paga' : fmt(x, 2) + ' per.';
+    r = { v: ps === null ? 0 : ps, kind: 'money', lines: [['Simples', show(ps)], ['Descontado', show(pd)]], msg: 'Períodos até recuperar o valor investido.', long: true };
+  }
+  finish(r);
+}
+
+/* ---------- Motor dos blocos ---------- */
+function openFn(id) {
+  const f = FNS[id];
+  fn = f; fields = f.fields; vals = {}; done = null; entry = null; repMode = false;
+  fields.forEach(x => { vals[x.k] = f.carry && juros[x.k] !== undefined ? juros[x.k] : null; });
+  active = fields.findIndex(x => vals[x.k] === null && !x.opt);
+  if (active < 0) {
+    try { active = fields.length - 1; tryCompute(); return; }
+    catch (e) { active = Math.max(0, fields.findIndex(x => vals[x.k] === null)); }
+  }
+  hint();
+}
+function hint() { say(fn.flow ? flowHint() : fields[active].hint); }
+function restart() {
+  if (fn.flow) { flow = { i: null, cfs: [] }; vals = {}; startFlow(fn.flow); return; }
+  if (fn.carry) juros = {};
+  openFn(fn.id);
+}
+function finish(r) {
+  done = r; active = -1; entry = null;
+  if (lift) shift();
+  stack[0] = r.kind === 'date' ? 0 : r.v; lift = true;
+  say(r.msg + (fn.flow || r.long ? '' : ' Digite para um novo cálculo, ou toque num bloco para corrigir.'));
+  addTape(fn.title, r.lines ? r.lines.map(l => l[0] + ' ' + l[1]).join(' · ') : resultText(r), r.kind === 'date' ? null : r.v);
+}
+function tryCompute() {
+  if (fn.flow) return computeFlow();
+  fields.forEach(f => { if (vals[f.k] === undefined) vals[f.k] = null; });
+  const r = fn.calc(vals);
+  if (r.fill) vals[r.fill] = r.v;
+  need(isFinite(r.v), 'Resultado fora do limite da calculadora.');
+  finish(r);
+}
+const entryNum = () => Number(entry.replace(',', '.')) || 0;
+function blockEnter() {
+  const f = fields[active], typed = entry !== null && entry !== '' && entry !== '-';
+  if (fn.flow) return flowEnter(f, typed);
+  if (typed) vals[f.k] = f.date ? parseDateDigits(entry) : entryNum();
+  else need(vals[f.k] !== null || f.opt, 'Digite ' + f.l + ' antes do ENTER.');
+  entry = null;
+  const next = fields.findIndex((x, j) => j > active && vals[x.k] === null);
+  const anyEmpty = next >= 0 ? next : fields.findIndex(x => vals[x.k] === null && !x.opt);
+  if (anyEmpty >= 0) { active = anyEmpty; hint(); }
+  else tryCompute();
+}
+function flowEnter(f, typed) {
+  if (f.k === 'i') {
+    need(typed || flow.i !== null, 'Digite i antes do ENTER.');
+    if (typed) flow.i = entryNum();
+    entry = null; vals.i = flow.i; active = fields.length - 1;
+    if (flow.cfs.length >= 2) return computeFlow();
+    return hint();
+  }
+  const j = f.cf;
+  if (repMode) {
+    const n = typed ? entryNum() : 0;
+    need(Number.isInteger(n) && n >= 1, 'Digite as repetições como número inteiro.');
+    flow.cfs[j].n = n; repMode = false; entry = null;
+  } else if (typed) {
+    const v = entryNum();
+    if (flow.cfs[j]) flow.cfs[j].v = v; else flow.cfs[j] = { v, n: 1 };
+    entry = null;
+  } else if (j === flow.cfs.length) {
+    if (j >= 2) return computeFlow();
+    throw new Error('Digite CF' + j + ' antes do ENTER.');
+  }
+  buildFlow(); active = fields.length - 1; hint();
+}
+function flowRepeat() {
+  const f = fields[active];
+  need(f && f.cf !== undefined && f.cf > 0, 'Digite um CF de CF1 em diante para repetir.');
+  need(entry !== null && entry !== '', 'Digite o valor do CF e depois aperte ×.');
+  const v = entryNum();
+  if (flow.cfs[f.cf]) flow.cfs[f.cf].v = v; else flow.cfs[f.cf] = { v, n: 1 };
+  vals[f.k] = v; entry = null; repMode = true; hint();
+}
+function focusBlock(j) { done = null; active = j; entry = null; repMode = false; hint(); }
+
+/* ---------- Pilha (contas livres) ---------- */
+const X = () => stack[0];
+const shift = () => { stack = [stack[0], stack[0], stack[1], stack[2]]; };
+function commit() {
+  if (entry === null) return;
+  stack[0] = entryNum();
+  entry = null; lift = true;
+}
+const SYM = { add: '+', sub: '−', mul: '×', div: '÷' };
+function binary(k, f) {
+  commit();
+  const y = stack[1], x = stack[0], r = f(y, x);
+  need(isFinite(r), 'Resultado fora do limite da calculadora.');
+  stack = [r, stack[2], stack[3], stack[3]];
+  lift = true;
+  addTape('Conta', fmt(y, 0, 6) + ' ' + SYM[k] + ' ' + fmt(x, 0, 6) + ' = ' + fmt(r, 0, 6), r);
+}
+
+/* ---------- Teclas ---------- */
+function digit(d) {
+  if (fn && done) restart();
+  const inDate = fn && active >= 0 && fields[active].date;
+  if (entry === null) { if (!fn && lift) shift(); entry = ''; }
+  if (inDate) { if (d !== ',' && entry.length < 8) entry += d; return; }
+  if (entry.replace(/[-,]/g, '').length >= 15) return;
+  if (d === ',') { if (entry.includes(',')) return; entry += entry === '' || entry === '-' ? '0,' : ','; }
+  else if (entry === '0' || entry === '-0') entry = entry.slice(0, -1) + d;
+  else entry += d;
+  if (!fn) stack[0] = entryNum();
+}
+function pressEnter() {
+  if (fn) { if (done) return restart(); return blockEnter(); }
+  commit(); shift(); lift = false;
+  say('Digite o segundo número e a operação.');
+}
+function pressBack() {
+  if (fn && done) return;
+  if (fn) {
+    if (entry !== null && entry !== '') { entry = entry.slice(0, -1); if (entry === '-') entry = ''; return; }
+    entry = null;
+    if (active > 0) { active--; repMode = false; hint(); }
+    return;
+  }
+  if (entry === null) { stack[0] = 0; lift = false; return; }
+  entry = entry.slice(0, -1);
+  if (entry === '' || entry === '-') { entry = null; stack[0] = 0; lift = false; }
+  else stack[0] = entryNum();
+}
+function pressSign() {
+  if (fn && (done || (active >= 0 && fields[active].date))) return;
+  if (entry !== null && entry !== '') {
+    entry = entry.startsWith('-') ? entry.slice(1) : '-' + entry;
+    if (!fn) stack[0] = entryNum();
+  } else if (!fn) { stack[0] = -stack[0]; lift = true; }
+  else entry = '-';
+}
+function pressOp(k, f) {
+  if (fn) {
+    if (fn.flow && k === 'mul' && !done) return flowRepeat();
+    if (done) { fn = null; fields = []; done = null; cat = null; drawSub(); }
+    else return say('Termine os blocos com ENTER, ou toque em Limpar.', true);
+  }
+  binary(k, f);
+  say('');
+}
+function resetWork() { fn = null; fields = []; vals = {}; active = -1; done = null; entry = null; repMode = false; }
+function clearAll() {
+  resetWork(); stack = [0, 0, 0, 0]; lift = false; juros = {}; flow = { i: null, cfs: [] }; cat = null;
+  say(HOME); drawSub();
+}
+function selectCat(c) {
+  resetWork(); stack = [0, 0, 0, 0]; lift = false; juros = {}; flow = { i: null, cfs: [] };
+  cat = cat === c ? null : c;
+  if (cat) say(CATS[cat].hint, true); else say(HOME);
+  drawSub();
+}
+function useToday() {
+  need(fn && !done && active >= 0 && fields[active].date, 'Escolha um cálculo de datas e use Hoje num bloco de data.');
+  const n = new Date();
+  entry = p2(n.getDate()) + p2(n.getMonth() + 1) + n.getFullYear();
+  blockEnter();
+}
+const CATS = {
+  juros: { l: 'Juros', hint: 'Selecione o que quer calcular: n, i, PV, PMT ou FV.', subs: ['n', 'i', 'PV', 'PMT', 'FV'].map(id => ({ id: 'j' + id, l: id })) },
+  taxas: { l: 'Taxas', hint: 'Selecione o cálculo de taxa nas teclas verdes.', subs: [{ id: 'equiv', l: 'Equiv.' }, { id: 'spread', l: 'Spread' }, { id: 'cdi', l: '% CDI' }, { id: 'gross', l: 'Gross-up' }, { id: 'pu', l: 'PU' }] },
+  fluxo: { l: 'Fluxo', hint: 'Selecione VPL, TIR ou Payback.', subs: [{ id: 'fvpl', l: 'VPL', a: () => startFlow('vpl') }, { id: 'ftir', l: 'TIR', a: () => startFlow('tir') }, { id: 'fpay', l: 'Payback', a: () => startFlow('pay') }, { id: 'fnovo', l: 'Novo fluxo', a: () => {
+    flow = { i: null, cfs: [] };
+    if (fn) startFlow(fn.flow); else say('Selecione VPL, TIR ou Payback.', true);
+  } }] },
+  credito: { l: 'Crédito', hint: 'Selecione o cálculo de crédito nas teclas verdes.', subs: [{ id: 'price', l: 'Price' }, { id: 'sac', l: 'SAC' }, { id: 'prazo', l: 'À vista × prazo' }, { id: 'simples', l: 'Juros simples' }, { id: 'desc', l: 'Desconto' }] },
+  datas: { l: 'Datas', hint: 'Selecione o cálculo de datas nas teclas verdes.', subs: [{ id: 'dias', l: 'Dias entre' }, { id: 'soma', l: 'Data + dias' }, { id: 'hoje', l: 'Hoje', a: useToday }] }
+};
+const MATH = [{ id: 'pct', l: '%' }, { id: 'dpct', l: 'Δ%' }, { id: 'tpct', l: '%T' }, { id: 'pow', l: 'yˣ' }, { id: 'inv', l: '1/x', a: () => {
+  resetWork(); commit();
+  need(X() !== 0, 'Não dá para dividir por zero.');
+  const x = X(); stack[0] = 1 / x; lift = true; say('');
+  addTape('1/x', '1/' + fmt(x, 0, 6) + ' = ' + fmt(1 / x, 0, 6), 1 / x);
+} }];
+
+function drawSub() {
+  const list = cat ? CATS[cat].subs : MATH;
+  $('sub').innerHTML = list.map(s => '<button type="button" data-s="' + s.id + '" class="k ' + (cat ? 'subk' : 'mathk') + '">' + s.l + '</button>').join('');
+}
+const digitKey = d => ({ id: d, l: d, c: 'd', a: () => digit(d) });
+const op = (id, l, f) => ({ id, l, c: 'op', a: () => pressOp(id, f) });
+const PAD = [
+  { id: 'clear', l: 'Limpar', c: 'clear', a: clearAll }, digitKey('7'), digitKey('8'), digitKey('9'),
+  op('div', '÷', (y, x) => { need(x !== 0, 'Não dá para dividir por zero.'); return y / x; }),
+  { id: 'chs', l: '+/−', c: 'fn', a: pressSign }, digitKey('4'), digitKey('5'), digitKey('6'),
+  op('mul', '×', (y, x) => y * x),
+  { id: 'enter', l: 'ENTER', c: 'enter', a: pressEnter }, digitKey('1'), digitKey('2'), digitKey('3'),
+  op('sub', '−', (y, x) => y - x),
+  digitKey('0'), { id: 'comma', l: ',', c: 'd', a: () => digit(',') },
+  { id: 'back', l: '⌫', c: 'fn', a: pressBack },
+  op('add', '+', (y, x) => y + x)
+];
+$('pad').innerHTML = '<div id="funcs"><span id="sec">FUNÇÕES</span>' + Object.keys(CATS).map(c => '<button type="button" data-c="' + c + '" id="c-' + c + '" class="k cat">' + CATS[c].l + '</button>').join('') +
+  '<div id="sub"></div></div>' +
+  PAD.map(k => '<button type="button" data-k="' + k.id + '" id="k-' + k.id + '" class="k ' + k.c + '">' + k.l + '</button>').join('');
+drawSub();
+
+/* ---------- Tela ---------- */
+function entryShown() {
+  if (entry === '') return '';
+  const neg = entry.startsWith('-'), [a, b] = entry.replace('-', '').split(',');
+  return (neg ? '−' : '') + (a === undefined || a === '' ? '' : a.replace(/\B(?=(\d{3})+(?!\d))/g, '.')) + (b === undefined ? '' : ',' + b);
+}
+function maskDate(s) { const t = s.padEnd(8, '_'); return t.slice(0, 2) + '/' + t.slice(2, 4) + '/' + t.slice(4); }
+function blockValue(f, j) {
+  if (j === active && entry !== null) {
+    if (f.date) return maskDate(entry);
+    return (repMode ? fmt(flow.cfs[f.cf].v, 0, 2) + ' ×' : '') + entryShown();
+  }
+  if (f.cf !== undefined) {
+    const c = flow.cfs[f.cf];
+    if (!c) return '';
+    return fmt(c.v, 0, 2) + (c.n > 1 ? ' ×' + c.n : '') + (repMode && j === active ? ' ×' : '');
+  }
+  const v = vals[f.k];
+  if (v === null || v === undefined) return '';
+  if (f.date) return dateShort(v);
+  return fmt(v, 0, 4) + (f.unit || '');
+}
+const locked = () => !!cat && !fn;
+function render() {
+  const blocking = !!fn;
+  $('app').className = locked() ? 'free locked' : blocking ? 'blocking' : 'free';
+  $('k-mul').classList.toggle('live', !!(fn && fn.flow && !done));
+  $('title').textContent = fn ? fn.title : cat ? CATS[cat].l : '';
+  $('y').textContent = !fn && stack[1] !== 0 ? 'Y  ' + fmt(stack[1], decFor('money')) : '';
+  $('blocks').hidden = !blocking;
+  if (blocking) {
+    const from = Math.max(0, fields.length - 6);
+    $('blocks').innerHTML = fields.slice(from).map((f, s) => {
+      const j = s + from;
+      return '<button type="button" class="b' + (j === active ? ' on' : '') + '" data-b="' + j + '"><span class="bl">' + f.l + '</span><span class="bv">' + blockValue(f, j) + '</span></button>';
+    }).join('');
+  }
+  const xEl = $('x');
+  xEl.classList.toggle('tap', !!(done && done.table));
+  xEl.classList.toggle('l3', !!(done && done.lines && done.lines.length > 2));
+  if (done && done.lines) {
+    xEl.innerHTML = done.lines.map(l => '<div class="ln"><small>' + l[0] + '</small><span>' + l[1] + '</span></div>').join('');
+    xEl.style.fontSize = '';
+  } else {
+    let text;
+    if (done) text = resultText(done);
+    else if (fn) {
+      const f = active >= 0 ? fields[active] : null;
+      text = entry !== null && entry !== '' ? (f && f.date ? maskDate(entry) : entryShown()) : (f && f.date ? '__/__/____' : '0');
+    } else text = entry !== null ? entryShown() || '0' : fmt(X(), decFor('money'));
+    xEl.textContent = text;
+    xEl.style.fontSize = text.length > 19 ? '20px' : text.length > 15 ? '25px' : text.length > 12 ? '30px' : '';
+  }
+  const m = $('msg'); m.textContent = msgText; m.className = msgErr ? 'err' : '';
+  $('btnEnd').setAttribute('aria-pressed', String(!begin));
+  $('btnBeg').setAttribute('aria-pressed', String(begin));
+  $('btnC').setAttribute('aria-pressed', String(compound));
+  ['auto', 2, 4, 6].forEach(d => $('dec' + d).setAttribute('aria-pressed', String(dec === d)));
+  Object.keys(CATS).forEach(c => $('c-' + c).classList.toggle('sel', c === cat));
+  document.querySelectorAll('#sub .k').forEach(b => b.classList.toggle('sel', !!fn && fn.id === b.dataset.s));
+  const hojeKey = document.querySelector('#sub [data-s="hoje"]');
+  if (hojeKey) hojeKey.classList.toggle('off', !(fn && !done && active >= 0 && fields[active] && fields[active].date));
+}
+function buzz() { try { navigator.vibrate && navigator.vibrate(30); } catch (_) {} }
+function run(f) {
+  msgErr = false;
+  try { f(); } catch (e) { say(e.message, true); buzz(); }
+  render();
+}
+function pressKey(id) {
+  if (locked() && id !== 'clear') { say(CATS[cat].hint, true); buzz(); return render(); }
+  run(PAD.find(x => x.id === id).a);
+}
+
+/* ---------- Fita e tabela ---------- */
+function openSheet(title, html, isTape) {
+  $('sheetTitle').textContent = title;
+  $('sheetBody').innerHTML = html;
+  $('sheetClear').hidden = !isTape;
+  $('sheet').hidden = false;
+  $('sheetScroll').scrollTop = 0;
+}
+function closeSheet() { $('sheet').hidden = true; }
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function showTape() {
+  const html = tape.length
+    ? '<ul class="tape">' + tape.map((t, j) => '<li><button type="button" data-tape="' + j + '"' + (t.v === null ? ' disabled' : '') + '><span class="tt">' + esc(t.t) + '</span><span class="tv">' + esc(t.s) + '</span></button></li>').join('') + '</ul>'
+    : '<p class="empty">Os resultados aparecem aqui. Toque em um para usar o valor de novo.</p>';
+  openSheet('Fita', html, true);
+}
+function useTape(j) {
+  const t = tape[j];
+  if (!t || t.v === null) return;
+  closeSheet();
+  run(() => {
+    const str = String(+t.v.toFixed(8)).replace('.', ',');
+    if (fn && !done && active >= 0 && !fields[active].date && !locked()) { entry = str; say('Valor da fita no bloco. Aperte ENTER.'); return; }
+    clearAll(); stack[0] = +t.v.toFixed(8); lift = true; say('Valor da fita no visor.');
+  });
+}
+function showTable(T) {
+  const sum = '<div class="sum">' + T.sum.map(s => '<div><small>' + s[0] + '</small><b>' + s[1] + '</b></div>').join('') + '</div>';
+  const rows = T.rows.map(r => '<tr><td>' + r[0] + '</td><td>' + money(r[1]) + '</td><td>' + money(r[2]) + '</td><td>' + money(r[3]) + '</td><td>' + money(r[4]) + '</td></tr>').join('');
+  openSheet(T.title, sum + '<table><thead><tr><th>Nº</th><th>Parcela</th><th>Juros</th><th>Amort.</th><th>Saldo</th></tr></thead><tbody>' + rows + '</tbody></table>', false);
+}
+$('sheetClose').onclick = closeSheet;
+$('sheetClear').onclick = () => {
+  const b = $('sheetClear');
+  if (b.dataset.confirm) { tape = []; save('tape', tape); delete b.dataset.confirm; b.textContent = 'Apagar fita'; showTape(); }
+  else { b.dataset.confirm = '1'; b.textContent = 'Confirmar'; setTimeout(() => { delete b.dataset.confirm; b.textContent = 'Apagar fita'; }, 3000); }
+};
+
+/* ---------- Eventos ---------- */
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-tape]');
+  if (t) return useTape(Number(t.dataset.tape));
+  if (!$('sheet').hidden) return;
+  const c = e.target.closest('[data-c]'), s = e.target.closest('[data-s]'), k = e.target.closest('[data-k]'), b = e.target.closest('[data-b]');
+  if (c) return run(() => selectCat(c.dataset.c));
+  if (s) {
+    if (s.classList.contains('off')) return;
+    const list = cat ? CATS[cat].subs : MATH, def = list.find(x => x.id === s.dataset.s);
+    return run(() => { if (def.a) def.a(); else openFn(def.id); });
+  }
+  if (k) return pressKey(k.dataset.k);
+  if (b) return run(() => focusBlock(Number(b.dataset.b)));
+  if (e.target.closest('#x') && done && done.table) return showTable(done.table);
+});
+$('btnEnd').onclick = () => run(() => { begin = false; save('begin', begin); say('Parcelas no fim do período.'); });
+$('btnBeg').onclick = () => run(() => { begin = true; save('begin', begin); say('Parcelas no início do período.'); });
+$('btnC').onclick = () => run(() => { compound = !compound; save('compound', compound); say(compound ? 'C ligado: juros compostos no período fracionário.' : 'C desligado: juros simples no período fracionário, como a HP de fábrica.'); });
+['auto', 2, 4, 6].forEach(d => { $('dec' + d).onclick = () => { dec = d; save('dec', dec); render(); }; });
+$('btnTape').onclick = showTape;
+document.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (!$('sheet').hidden) { if (e.key === 'Escape') closeSheet(); return; }
+  const map = { '+': 'add', '-': 'sub', '*': 'mul', '/': 'div', Enter: 'enter', Backspace: 'back', ',': 'comma', '.': 'comma', Escape: 'clear' };
+  const id = /^[0-9]$/.test(e.key) ? e.key : map[e.key];
+  if (!id) return;
+  e.preventDefault();
+  pressKey(id);
+});
+// Tela parada no iPhone; só a fita e a tabela rolam.
+document.addEventListener('touchmove', e => { if (!e.target.closest('.scroll')) e.preventDefault(); }, { passive: false });
+
+say(HOME);
+render();
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  const hadWorker = !!navigator.serviceWorker.controller;
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadWorker && !reloaded) { reloaded = true; location.reload(); }
+  });
+  window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+}
+</script>
+</body>
+</html>
